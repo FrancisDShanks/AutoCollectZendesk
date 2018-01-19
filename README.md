@@ -1,4 +1,5 @@
 # AutoCollectPostsFromZendesk
+# Author: Francis Xufan Du  Email:xufan.du@gmail.com
 This is a python script to auto collect posts from zendesk api with Chrome, parse the json data and store in an excel file for statistic. 
 Requirement:
   - Python 3 is needed.
