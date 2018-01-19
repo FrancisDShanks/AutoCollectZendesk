@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-   Copyright 2018 Francis Xufan Du
+   Copyright 2018 Francis Xufan Du - BEYONDSOFT INC.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
    Created on Thu Jan 18 14:06:16 2018
 
-	@author: Francis Xufan Du
+	@author: Francis Xufan Du - BEYONDSOFT INC.
 	@email: duxufan@beyondsoft.com xufan.du@gmail.com
 	@Version: 0.1-Beta
 """
