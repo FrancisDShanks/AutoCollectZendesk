@@ -30,6 +30,8 @@ import time
 import re
 
 # 3rd party mods
+import psycopg2
+import psycopg2.extras
 from selenium import webdriver
 
 
@@ -52,6 +54,39 @@ class AutoZendesk(object):
         self._browser = None
         self._EXCEL_MAXIMUM_CELL = 32767
         self._zendesk_main_page = r'https://jetadvantage.zendesk.com/hc/en-us'
+
+        self._postgresql_database = "isv_zendesk"
+        self._postgresql_user = "postgres"
+        self._postgresql_passwd = "Dxf3529!"
+        self._postgresql_host = "127.0.0.1"
+        self._postgresql_port = "5432"
+        self._postgresql_conn = None
+
+        self._json_filename_list = []
+
+    def _connect_postgresql(self):
+        self._postgresql_conn = psycopg2.connect(dbname=self._postgresql_database,
+                                                 user=self._postgresql_user,
+                                                 password=self._postgresql_passwd,
+                                                 host=self._postgresql_host,
+                                                 port=self._postgresql_port)
+
+    def initial_postgresql(self):
+        self._connect_postgresql()
+        cur = self._postgresql_conn.cursor()
+        cur.execute("CREATE TABLE IF NOT EXISTS isv_posts_json (jdoc jsonb);")
+
+        for filename in self._json_filename_list:
+            print(filename)
+            data = self._load_json(filename)
+            posts = data['posts']
+            for post in posts:
+                print(type(post), post)
+                cur.execute("INSERT INTO isv_posts_json (jdoc) VALUES(%s);", [psycopg2.extras.Json(post)])
+
+        self._postgresql_conn.commit()
+        cur.close()
+        self._postgresql_conn.close()
 
     @staticmethod
     def _load_json(filename):
@@ -162,6 +197,9 @@ class AutoZendesk(object):
 
                     file_name = 'post' + str(page_cnt) + '.json'
                     full_path = self._save_path + file_name
+                    if os.path.exists(full_path):
+                        os.remove(full_path)
+                    self._json_filename_list.append(full_path)
                     file_object = codecs.open(full_path, 'w', 'utf-8')
                     raw_data = self._browser.page_source
 
@@ -170,10 +208,3 @@ class AutoZendesk(object):
                     self._browser.close()
             self._browser.switch_to.window(base_handler)
         self._logout_zendesk()
-
-
-if __name__ == "__main__":
-    a = AutoZendesk(r'xufan.du@hp.com', r'Dxf352985861!',
-                    r'C:\Program Files (x86)\Google\Chrome\Application\chromedriver.exe')
-    a.collect_posts()
-    a.build_excel()
