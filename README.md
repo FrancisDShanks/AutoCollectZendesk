@@ -11,7 +11,7 @@ Requirement:
   - You will need install a chromedriver.exe to the folder hold chrome.exe.
 
   Usage:
-  a.drop_all_table_postgresql() .
-  a.collect_posts_and_comments() .
-  a.build_posts_excel() .
-  a.build_comments_excel() .
+    a.drop_all_table_postgresql()
+    a.collect_posts_and_comments()
+    a.build_posts_excel()
+    a.build_comments_excel()
