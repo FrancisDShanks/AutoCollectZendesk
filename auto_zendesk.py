@@ -27,7 +27,6 @@ import os
 import json
 import xlwt
 import time
-import datetime
 import re
 
 # 3rd party mods
@@ -479,12 +478,13 @@ class AutoZendesk(object):
         self._collect_comments()
         self.initial_comments_postgresql()
         self._logout_zendesk()
+        self.build_comments_postgresql()
 
     def _collect_comments(self):
-        '''
+        """
         collect comments
         :return: None
-        '''
+        """
         # TO-DO : now I consider all comments only have one page, should detect page count
         conn = psycopg2.connect(dbname="isv_zendesk",
                                 user="postgres",
@@ -499,7 +499,7 @@ class AutoZendesk(object):
         cur.close()
         conn.close()
 
-        #https://jetadvantage.zendesk.com/api/v2/community/posts/220794928/comments.json
+        # https://jetadvantage.zendesk.com/api/v2/community/posts/220794928/comments.json
         for id0 in ids:
             js = 'window.open("https://jetadvantage.zendesk.com/api/v2/community/posts/' + id0 + '/comments.json");'
             print(js)
@@ -522,4 +522,3 @@ class AutoZendesk(object):
                     file_object.close()
                     self._browser.close()
             self._browser.switch_to.window(base_handler)
-
