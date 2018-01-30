@@ -120,7 +120,7 @@ class AutoZendesk(object):
     def build_posts_postgresql(self):
         self._connect_postgresql()
         cur = self._postgresql_conn.cursor()
-        # TO-DO exception handler when table not exists
+        # TODO exception handler when table not exists
         cur.execute("select * from isv_posts_json")
         posts = cur.fetchall()
         # posts = [({})]
@@ -338,7 +338,7 @@ class AutoZendesk(object):
     def build_posts_excel(self):
         """
         build Excel report file from collected json files
-        TO-DO : json file name already in list, no need to build filename again
+        TODO : json file name already in list, no need to build filename again
         """
         local_time = time.strftime("_%Y_%m_%d", time.localtime(time.time()))
         save_filename = self._save_path + 'Posts' + local_time + '.xls'
@@ -347,31 +347,34 @@ class AutoZendesk(object):
         wb = xlwt.Workbook()
         ws = wb.add_sheet('All Posts')
         row_cnt = 0
-        for i in range(1, self._total_page + 1):
-            filename = self._save_path + 'post' + str(i) + '.json'
-            data = self._load_json(filename)
-            posts = data['posts']
+
+        self._connect_postgresql()
+        cur = self._postgresql_conn.cursor()
+        # TODO exception handler when table not exists
+        cur.execute("select * from isv_posts_json")
+        posts = cur.fetchall()
+
+        for p in posts:
+            post = p[0]
 
             if not row_cnt:
                 count = 0
-                for key in posts[0].keys():
+                for key in post.keys():
                     ws.write(0, count, key)
                     count += 1
 
-            for post in posts:
-                row_cnt += 1
-                count = 0
-                for key in post.keys():
-                    if key == 'details' and len(post[key]) >= self._EXCEL_MAXIMUM_CELL:
-                        post[key] = post[key][:self._EXCEL_MAXIMUM_CELL]
+            row_cnt += 1
+            count = 0
+            for key in post.keys():
+                if key == 'details' and len(post[key]) >= self._EXCEL_MAXIMUM_CELL:
+                    post[key] = post[key][:self._EXCEL_MAXIMUM_CELL]
 
-                    if key == 'id' or key == 'author_id' or key == 'topic_id':
-                        post[key] = '#' + str(post[key])
+                if key == 'id' or key == 'author_id' or key == 'topic_id':
+                    post[key] = '#' + str(post[key])
 
-                    ws.write(row_cnt, count, str(post[key]))
-                    count += 1
+                ws.write(row_cnt, count, str(post[key]))
+                count += 1
         wb.save(save_filename)
-        self._remove_json_posts_files()
 
     def build_comments_excel(self):
         """
@@ -384,30 +387,34 @@ class AutoZendesk(object):
         wb = xlwt.Workbook()
         ws = wb.add_sheet('All comments')
         row_cnt = 0
-        for filename in self._json_comments_filename_list:
-            data = self._load_json(filename)
-            comments = data['comments']
-            if len(comments):
-                if not row_cnt:
-                    count = 0
-                    for key in comments[0].keys():
-                        ws.write(0, count, key)
-                        count += 1
 
-                for comment in comments:
-                    row_cnt += 1
-                    count = 0
-                    for key in comment.keys():
-                        if key == 'body' and len(comment[key]) >= self._EXCEL_MAXIMUM_CELL:
-                            comment[key] = comment[key][:self._EXCEL_MAXIMUM_CELL]
+        self._connect_postgresql()
+        cur = self._postgresql_conn.cursor()
+        # TODO exception handler when table not exists
+        cur.execute("select * from isv_comments_json")
+        comments = cur.fetchall()
 
-                        if key == 'id' or key == 'author_id' or key == 'post_id':
-                            comment[key] = '#' + str(comment[key])
+        for c in comments:
+            comment = c[0]
 
-                        ws.write(row_cnt, count, str(comment[key]))
-                        count += 1
+            if not row_cnt:
+                count = 0
+                for key in comment.keys():
+                    ws.write(0, count, key)
+                    count += 1
+
+            row_cnt += 1
+            count = 0
+            for key in comment.keys():
+                if key == 'body' and len(comment[key]) >= self._EXCEL_MAXIMUM_CELL:
+                    comment[key] = comment[key][:self._EXCEL_MAXIMUM_CELL]
+
+                if key == 'id' or key == 'author_id' or key == 'post_id':
+                    comment[key] = '#' + str(comment[key])
+
+                ws.write(row_cnt, count, str(comment[key]))
+                count += 1
         wb.save(save_filename)
-        self._remove_json_comments_files()
 
     def _login_zendesk(self):
         """
@@ -479,6 +486,8 @@ class AutoZendesk(object):
         self.initial_comments_postgresql()
         self._logout_zendesk()
         self.build_comments_postgresql()
+        self._remove_json_posts_files()
+        self._remove_json_comments_files()
 
     def _collect_comments(self):
         """
