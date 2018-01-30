@@ -486,18 +486,15 @@ class AutoZendesk(object):
         :return: None
         """
         # TO-DO : now I consider all comments only have one page, should detect page count
-        conn = psycopg2.connect(dbname="isv_zendesk",
-                                user="postgres",
-                                password="Dxf3529!",
-                                host="127.0.0.1",
-                                port="5432")
-        cur = conn.cursor()
+        self._connect_postgresql()
+        cur = self._postgresql_conn.cursor()
         cur.execute("select id from isv_posts")
         # data structure : [(id)(id),...,(id)]
         load_ids = cur.fetchall()
         ids = [id0[0] for id0 in load_ids]
+        self._postgresql_conn.commit()
         cur.close()
-        conn.close()
+        self._disconnect_postgresql()
 
         # https://jetadvantage.zendesk.com/api/v2/community/posts/220794928/comments.json
         for id0 in ids:
