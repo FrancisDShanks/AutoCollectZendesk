@@ -35,7 +35,8 @@ import psycopg2.extras
 from selenium import webdriver
 
 
-# TO-DO: auto detect the total page count
+# TODO: auto detect the total page count
+# TODO: update database instead of rebuild it
 class AutoZendesk(object):
     def __init__(self, username, passwd, chrome_driver_path,
                  postgresql_dbname, postgresql_user, postgresql_passwd, postgresql_host, postgresql_port):
@@ -44,6 +45,11 @@ class AutoZendesk(object):
         :param username: username of Zendesk JetAdvantage Support forum
         :param passwd: password of Zendesk JetAdvantage Support forum
         :param chrome_driver_path: path of chromedriver.exe tool, normally put in the same path as chrome.exe
+        :param postgresql_dbname: database name
+        :param postgresql_user: database user name
+        :param postgresql_passwd: passwd for the user
+        :param postgresql_host: database host
+        :param postgresql_port: database port
         """
         self._username = username
         self._passwd = passwd
@@ -65,18 +71,35 @@ class AutoZendesk(object):
 
         self._json_posts_filename_list = []
         self._json_comments_filename_list = []
+        self._json_users_filename_list = []
 
     def _connect_postgresql(self):
+        """
+        connect postgresql database
+        :return: None
+        """
         self._postgresql_conn = psycopg2.connect(dbname=self._postgresql_dbname,
                                                  user=self._postgresql_user,
                                                  password=self._postgresql_passwd,
                                                  host=self._postgresql_host,
                                                  port=self._postgresql_port)
+        print("Connected to {host}:{port}  {db}".format(host=self._postgresql_host,
+                                                        port=self._postgresql_port,
+                                                        db=self._postgresql_dbname))
 
     def _disconnect_postgresql(self):
+        """
+        disconnect database
+        :return: None
+        """
         self._postgresql_conn.close()
+        print("Disconnect database")
 
     def drop_all_table_postgresql(self):
+        """
+        drop all posts and comments tables in database
+        :return: None
+        """
         self._connect_postgresql()
         cur = self._postgresql_conn.cursor()
         cur.execute("DROP TABLE IF EXISTS isv_posts;")
@@ -86,8 +109,13 @@ class AutoZendesk(object):
         self._postgresql_conn.commit()
         cur.close()
         self._disconnect_postgresql()
+        print("Dropped tables")
 
     def initial_posts_postgresql(self):
+        """
+        build post json table
+        :return: None
+        """
         self._connect_postgresql()
         cur = self._postgresql_conn.cursor()
         cur.execute("CREATE TABLE IF NOT EXISTS isv_posts_json (jdoc jsonb);")
@@ -101,8 +129,13 @@ class AutoZendesk(object):
         self._postgresql_conn.commit()
         cur.close()
         self._disconnect_postgresql()
+        print("table isv_posts_json built")
 
     def initial_comments_postgresql(self):
+        """
+        build comment json table
+        :return: None
+        """
         self._connect_postgresql()
         cur = self._postgresql_conn.cursor()
         cur.execute("CREATE TABLE IF NOT EXISTS isv_comments_json (jdoc jsonb);")
@@ -116,8 +149,172 @@ class AutoZendesk(object):
         self._postgresql_conn.commit()
         cur.close()
         self._disconnect_postgresql()
+        print("table isv_comments_json built")
+
+    def build_topics_postgresql(self):
+        """
+
+        :return:
+        """
+        # TODO:check if json file exists
+        self._connect_postgresql()
+        cur = self._postgresql_conn.cursor()
+        """
+        "id": varchar
+        "url": varchar
+        "html_url": varchar
+        "name": varchar
+        "description: varchar
+        "position": varchar
+        "follower_count": varchar
+        "community_id": varchar
+        "created_at": varchar
+        "updated_at": varchar
+        "user_segment_id": varchar
+        """
+        cur.execute("DROP TABLE IF EXISTS isv_topics")
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS isv_topics (
+        id varchar PRIMARY KEY,
+        url varchar,
+        html_url varchar,
+        name varchar,
+        description varchar,
+        position varchar,
+        follower_count varchar,
+        community_id varchar,
+        created_at varchar,
+        updated_at varchar,
+        user_segment_id varchar   
+        );
+        """
+                    )
+
+        data = self._load_json(self._save_path + r'topics.json')
+        topics = data['topics']
+        for topic in topics:
+            created_at = topic['created_at']
+            created_at_date = created_at[:10]
+            created_at_time = created_at[11:-1]
+            created_at = created_at_date + ' ' + created_at_time
+
+            updated_at = topic['updated_at']
+            updated_at_date = updated_at[:10]
+            updated_at_time = updated_at[11:-1]
+            updated_at = updated_at_date + ' ' + updated_at_time
+
+            command = "INSERT INTO isv_topics VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);"
+            cur.execute(command, (str(topic['id']),
+                                  topic['url'],
+                                  topic['html_url'],
+                                  topic['name'],
+                                  topic['description'],
+                                  str(topic['position']),
+                                  str(topic['follower_count']),
+                                  str(topic['community_id']),
+                                  created_at,
+                                  updated_at,
+                                  str(topic['user_segment_id'])
+                                  ))
+
+        self._postgresql_conn.commit()
+        cur.close()
+        self._disconnect_postgresql()
+
+    def build_users_postgresql(self):
+        """
+
+        :return:
+        """
+        self._connect_postgresql()
+        cur = self._postgresql_conn.cursor()
+        """
+        "id": varchar
+        "url": varchar
+        "name": varchar
+        "email": varchar
+        "created_at": varchar
+        "updated_at": varchar
+        "time_zone": varchar
+        "phone": varchar
+        "shared_phone_number": varchar
+        "photo": text
+        "locale_id": varchar
+        "locale": varchar
+        "organization_id": varchar
+        "role": varchar
+        "verified": bool
+        "result_type": varchar
+        """
+        cur.execute("DROP TABLE IF EXISTS isv_users")
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS isv_users (
+        id varchar PRIMARY KEY,
+        url varchar,
+        name varchar,
+        email varchar,
+        created_at varchar,
+        updated_at varchar,
+        time_zone varchar,
+        phone varchar,
+        shared_phone_number varchar,
+        photo text,
+        locale_id varchar,
+        locale varchar,
+        organization_id varchar,
+        role varchar,
+        verified bool,
+        result_type varchar       
+        );
+        """
+                    )
+
+        self._json_users_filename_list = [self._save_path + 'users_1.json', self._save_path + 'users_2.json']
+        for filename in self._json_users_filename_list:
+            data = self._load_json(filename)
+            users = data['results']
+            for user in users:
+                # TODO: why 3 tickets here?
+                if 'via' in user.keys():
+                    continue
+
+                created_at = user['created_at']
+                created_at_date = created_at[:10]
+                created_at_time = created_at[11:-1]
+                created_at = created_at_date + ' ' + created_at_time
+
+                updated_at = user['updated_at']
+                updated_at_date = updated_at[:10]
+                updated_at_time = updated_at[11:-1]
+                updated_at = updated_at_date + ' ' + updated_at_time
+                command = "INSERT INTO isv_users VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);"
+                cur.execute(command, (str(user['id']),
+                                      user['url'],
+                                      user['name'],
+                                      user['email'],
+                                      created_at,
+                                      updated_at,
+                                      user['time_zone'],
+                                      str(user['phone']),
+                                      str(user['shared_phone_number']),
+                                      str(user['photo']),
+                                      str(user['locale_id']),
+                                      user['locale'],
+                                      str(user['organization_id']),
+                                      user['role'],
+                                      user['verified'],
+                                      user['result_type']
+                                      ))
+
+        self._postgresql_conn.commit()
+        cur.close()
+        self._disconnect_postgresql()
 
     def build_posts_postgresql(self):
+        """
+        build post table
+        :return: None
+        """
         self._connect_postgresql()
         cur = self._postgresql_conn.cursor()
         # TODO exception handler when table not exists
@@ -178,7 +375,6 @@ class AutoZendesk(object):
         """
         '''
         for p in posts:
-            print('-' * 20)
             post = p[0]
             created_at = post['created_at']
             created_at_date = created_at[:10]
@@ -186,7 +382,6 @@ class AutoZendesk(object):
             created_at = created_at_date + ' ' + created_at_time
             t = time.strptime(created_at, '%Y-%m-%d %H:%M:%S')
             created_at_timestamp = time.mktime(t)
-            print(created_at, created_at_timestamp)
 
             updated_at = post['updated_at']
             updated_at_date = updated_at[:10]
@@ -219,11 +414,16 @@ class AutoZendesk(object):
         self._postgresql_conn.commit()
         cur.close()
         self._disconnect_postgresql()
+        print("table isv_posts built")
 
     def build_comments_postgresql(self):
+        """
+        build comment table
+        :return: None
+        """
         self._connect_postgresql()
         cur = self._postgresql_conn.cursor()
-        # TO-DO exception handler when table not exists
+        # TODO exception handler when table not exists
         cur.execute("select * from isv_comments_json")
         comments = cur.fetchall()
         # comments = [({})]
@@ -294,6 +494,7 @@ class AutoZendesk(object):
         self._postgresql_conn.commit()
         cur.close()
         self._disconnect_postgresql()
+        print("table isv_comments built")
 
     @staticmethod
     def _load_json(filename):
@@ -326,6 +527,7 @@ class AutoZendesk(object):
             full_path = self._save_path + file_name
             if os.path.exists(full_path):
                 os.remove(full_path)
+        print("removing posts json files ...")
 
     def _remove_json_comments_files(self):
         """
@@ -334,16 +536,35 @@ class AutoZendesk(object):
         for full_path in self._json_comments_filename_list:
             if os.path.exists(full_path):
                 os.remove(full_path)
+        print("removing comments json files ...")
+
+    def remove_json_users_topics_files(self):
+        """
+        remove generated json file(s)
+        """
+        for full_path in self._json_users_filename_list:
+            if os.path.exists(full_path):
+                os.remove(full_path)
+        if os.path.exists(self._save_path + 'topics.json'):
+            os.remove(self._save_path + 'topics.json')
+
+    def _build_excel_filename(self, data_type):
+        """
+        Build excel file name, and remove excel if already exists
+        :param data_type: 'posts' or 'comments'
+        :return: excel filename
+        """
+        local_time = time.strftime("_%Y_%m_%d", time.localtime(time.time()))
+        save_filename = self._save_path + data_type + local_time + '.xls'
+        if os.path.exists(save_filename):
+            os.remove(save_filename)
+
+        return save_filename
 
     def build_posts_excel(self):
         """
         build Excel report file from collected json files
-        TODO : json file name already in list, no need to build filename again
         """
-        local_time = time.strftime("_%Y_%m_%d", time.localtime(time.time()))
-        save_filename = self._save_path + 'Posts' + local_time + '.xls'
-        if os.path.exists(save_filename):
-            os.remove(save_filename)
         wb = xlwt.Workbook()
         ws = wb.add_sheet('All Posts')
         row_cnt = 0
@@ -374,16 +595,12 @@ class AutoZendesk(object):
 
                 ws.write(row_cnt, count, str(post[key]))
                 count += 1
-        wb.save(save_filename)
+        wb.save(self._build_excel_filename('posts'))
 
     def build_comments_excel(self):
         """
         build Excel report file from collected json files
         """
-        local_time = time.strftime("_%Y_%m_%d", time.localtime(time.time()))
-        save_filename = self._save_path + 'comments' + local_time + '.xls'
-        if os.path.exists(save_filename):
-            os.remove(save_filename)
         wb = xlwt.Workbook()
         ws = wb.add_sheet('All comments')
         row_cnt = 0
@@ -414,7 +631,7 @@ class AutoZendesk(object):
 
                 ws.write(row_cnt, count, str(comment[key]))
                 count += 1
-        wb.save(save_filename)
+        wb.save(self._build_excel_filename('comments'))
 
     def _login_zendesk(self):
         """
@@ -443,10 +660,10 @@ class AutoZendesk(object):
         """
         collect json file(s) from Zendesk API
         """
+        print("Collecting Posts...")
         for page_cnt in range(1, self._total_page + 1):
             js = 'window.open("https://jetadvantage.zendesk.com//api/v2/community/posts.json?page=' + str(
                 page_cnt) + '");'
-            print(js)
             self._browser.execute_script(js)
             base_handler = self._browser.current_window_handle
             all_handler = self._browser.window_handles
@@ -477,6 +694,32 @@ class AutoZendesk(object):
         self._collect_comments()
         self._logout_zendesk()
 
+    def collect_users_and_topics_info(self):
+        self._login_zendesk()
+        self._collect_users()
+        self._collect_topics()
+        self._logout_zendesk()
+
+    def run_all(self):
+        self.drop_all_table_postgresql()
+        self._login_zendesk()
+        self._collect_posts()
+        self.initial_posts_postgresql()
+        self.build_posts_postgresql()
+        self._collect_comments()
+        self.initial_comments_postgresql()
+        self.build_comments_postgresql()
+        self._remove_json_posts_files()
+        self._remove_json_comments_files()
+        self.build_posts_excel()
+        self.build_comments_excel()
+        self._collect_users()
+        self._collect_topics()
+        self.build_topics_postgresql()
+        self.build_users_postgresql()
+        self.remove_json_users_topics_files()
+        self._logout_zendesk()
+
     def collect_posts_and_comments(self):
         self._login_zendesk()
         self._collect_posts()
@@ -494,7 +737,7 @@ class AutoZendesk(object):
         collect comments
         :return: None
         """
-        # TO-DO : now I consider all comments only have one page, should detect page count
+        # TODO : now I consider all comments only have one page, should detect page count
         self._connect_postgresql()
         cur = self._postgresql_conn.cursor()
         cur.execute("select id from isv_posts")
@@ -504,11 +747,10 @@ class AutoZendesk(object):
         self._postgresql_conn.commit()
         cur.close()
         self._disconnect_postgresql()
-
+        print("Collecting Comments...")
         # https://jetadvantage.zendesk.com/api/v2/community/posts/220794928/comments.json
         for id0 in ids:
             js = 'window.open("https://jetadvantage.zendesk.com/api/v2/community/posts/' + id0 + '/comments.json");'
-            print(js)
             self._browser.execute_script(js)
             base_handler = self._browser.current_window_handle
             all_handler = self._browser.window_handles
@@ -528,3 +770,61 @@ class AutoZendesk(object):
                     file_object.close()
                     self._browser.close()
             self._browser.switch_to.window(base_handler)
+
+    def _collect_users(self):
+        """
+        collect zendesk forum user info
+        :return: None
+        """
+        # TODO: auto build query http address
+        print("Collecting Users...")
+        # https://jetadvantage.zendesk.com/api/v2/search.json?page=1&query=created%3C2018-12-30
+        for page_cnt in range(1, 3):
+            js = 'window.open("https://jetadvantage.zendesk.com/api/v2/search.json?page=' + str(page_cnt) + \
+                 '&query=created%3C2018-12-30");'
+            self._browser.execute_script(js)
+            base_handler = self._browser.current_window_handle
+            all_handler = self._browser.window_handles
+            for handler in all_handler:
+                if handler != base_handler:
+                    self._browser.switch_to.window(handler)
+
+                    file_name = 'users_' + str(page_cnt) + '.json'
+                    full_path = self._save_path + file_name
+                    if os.path.exists(full_path):
+                        os.remove(full_path)
+                    self._json_users_filename_list.append(full_path)
+                    file_object = codecs.open(full_path, 'w', 'utf-8')
+                    raw_data = self._browser.page_source
+
+                    file_object.write(self._remove_html_tags(raw_data))
+                    file_object.close()
+                    self._browser.close()
+            self._browser.switch_to.window(base_handler)
+
+    def _collect_topics(self):
+        """
+        collect zendesk forum topics info
+        :return: None
+        """
+        print("Collecting Topics...")
+        # https://jetadvantage.zendesk.com/api/v2/community/topics.json
+        js = 'window.open("https://jetadvantage.zendesk.com/api/v2/community/topics.json");'
+        self._browser.execute_script(js)
+        base_handler = self._browser.current_window_handle
+        all_handler = self._browser.window_handles
+        for handler in all_handler:
+            if handler != base_handler:
+                self._browser.switch_to.window(handler)
+
+                file_name = 'topics.json'
+                full_path = self._save_path + file_name
+                if os.path.exists(full_path):
+                    os.remove(full_path)
+                file_object = codecs.open(full_path, 'w', 'utf-8')
+                raw_data = self._browser.page_source
+
+                file_object.write(self._remove_html_tags(raw_data))
+                file_object.close()
+                self._browser.close()
+        self._browser.switch_to.window(base_handler)
