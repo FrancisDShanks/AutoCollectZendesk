@@ -18,7 +18,7 @@ Created on Thu Jan 18 14:06:16 2018
 
 @author: Francis Xufan Du - BEYONDSOFT INC.
 @email: duxufan@beyondsoft.com xufan.du@gmail.com
-@Version: 0.3-Beta
+@Version: 0.4-Beta
 """
 
 # core mods
@@ -130,6 +130,18 @@ class AutoZendesk(object):
         cur.close()
         self._disconnect_postgresql()
         print("table isv_posts_json built")
+
+    def build_json_comments_file_list(self):
+        for root, dirs, files in os.walk(self._save_path):
+            for file in files:
+                if file[:3] == 'com':
+                    self._json_comments_filename_list.append(self._save_path + file)
+
+        for j in self._json_comments_filename_list:
+            print(j)
+            with open(j, 'r', encoding='utf8') as f:
+                data = f.read()
+                print(data)
 
     def initial_comments_postgresql(self):
         """
@@ -503,6 +515,7 @@ class AutoZendesk(object):
         :param filename: file name of json file need to load
         :return: raw data loaded from json file
         """
+        print(filename)
         with open(filename, encoding='utf8') as json_file:
             data = json.load(json_file)
         return data
@@ -684,22 +697,6 @@ class AutoZendesk(object):
                     self._browser.close()
             self._browser.switch_to.window(base_handler)
 
-    def collect_posts_only(self):
-        self._login_zendesk()
-        self._collect_posts()
-        self._logout_zendesk()
-
-    def collect_comments_only(self):
-        self._login_zendesk()
-        self._collect_comments()
-        self._logout_zendesk()
-
-    def collect_users_and_topics_info(self):
-        self._login_zendesk()
-        self._collect_users()
-        self._collect_topics()
-        self._logout_zendesk()
-
     def run_all(self):
         self.drop_all_table_postgresql()
         self._login_zendesk()
@@ -707,30 +704,19 @@ class AutoZendesk(object):
         self.initial_posts_postgresql()
         self.build_posts_postgresql()
         self._collect_comments()
-        self.initial_comments_postgresql()
-        self.build_comments_postgresql()
-        self._remove_json_posts_files()
-        self._remove_json_comments_files()
-        self.build_posts_excel()
-        self.build_comments_excel()
         self._collect_users()
         self._collect_topics()
+        self._logout_zendesk()
+        self.initial_comments_postgresql()
+        self.build_comments_postgresql()
+        self.build_posts_excel()
+        self.build_comments_excel()
         self.build_topics_postgresql()
         self.build_users_postgresql()
-        self.remove_json_users_topics_files()
-        self._logout_zendesk()
-
-    def collect_posts_and_comments(self):
-        self._login_zendesk()
-        self._collect_posts()
-        self.initial_posts_postgresql()
-        self.build_posts_postgresql()
-        self._collect_comments()
-        self.initial_comments_postgresql()
-        self._logout_zendesk()
-        self.build_comments_postgresql()
+        self.build_update_record()
         self._remove_json_posts_files()
         self._remove_json_comments_files()
+        self.remove_json_users_topics_files()
 
     def _collect_comments(self):
         """
@@ -828,3 +814,33 @@ class AutoZendesk(object):
                 file_object.close()
                 self._browser.close()
         self._browser.switch_to.window(base_handler)
+
+    def build_update_record(self):
+        """
+        record database update record
+        :return:
+        """
+        self._connect_postgresql()
+        cur = self._postgresql_conn.cursor()
+
+        cur.execute("CREATE TABLE IF NOT EXISTS isv_update "
+                    "(timestamp varchar PRIMARY KEY, date varchar, time varchar);")
+        ts = time.time()
+        t = time.localtime()
+        year = str(t.tm_year)
+        month = str(t.tm_mon)
+        if len(month) < 2:
+            month = '0' + month
+        day = str(t.tm_mday)
+        if len(day) < 2:
+            day = '0' + day
+        hour = str(t.tm_hour)
+        m = str(t.tm_min)
+        sec = str(t.tm_sec)
+        date = '/'.join((year, month, day))
+        tt = ':'.join((hour, m, sec))
+        command = "INSERT INTO isv_update VALUES(%s,%s,%s);"
+        cur.execute(command, (str(ts), date, tt))
+        self._postgresql_conn.commit()
+        cur.close()
+        self._disconnect_postgresql()
