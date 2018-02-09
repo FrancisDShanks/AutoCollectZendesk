@@ -18,7 +18,12 @@ Created on Thu Jan 18 14:06:16 2018
 
 @author: Francis Xufan Du - BEYONDSOFT INC.
 @email: duxufan@beyondsoft.com xufan.du@gmail.com
-@Version: 0.4-Beta
+@Version: 	02/2018 0.5-Beta: separate crawling logic and database logic 
+			02/2018 0.4-Beta: add database update recording
+			02/2018 0.3-Beta: add users and topics data collecting
+			01/2018 0.2-Beta: add database storage
+			01/2018 0.1-Beta: build zendesk auto collect function
+			
 """
 
 # core mods
@@ -35,7 +40,6 @@ import psycopg2.extras
 from selenium import webdriver
 
 
-# TODO: auto detect the total page count
 # TODO: update database instead of rebuild it
 class AutoZendesk(object):
     def __init__(self, username, passwd, chrome_driver_path,
@@ -61,6 +65,7 @@ class AutoZendesk(object):
         self._browser = None
         self._EXCEL_MAXIMUM_CELL = 32767
         self._zendesk_main_page = r'https://jetadvantage.zendesk.com/hc/en-us'
+        self._posts_id = []
 
         self._postgresql_dbname = postgresql_dbname
         self._postgresql_user = postgresql_user
@@ -95,7 +100,7 @@ class AutoZendesk(object):
         self._postgresql_conn.close()
         print("Disconnect database")
 
-    def drop_all_table_postgresql(self):
+    def _drop_all_table_postgresql(self):
         """
         drop all posts and comments tables in database
         :return: None
@@ -111,7 +116,7 @@ class AutoZendesk(object):
         self._disconnect_postgresql()
         print("Dropped tables")
 
-    def initial_posts_postgresql(self):
+    def _initial_posts_postgresql(self):
         """
         build post json table
         :return: None
@@ -131,7 +136,45 @@ class AutoZendesk(object):
         self._disconnect_postgresql()
         print("table isv_posts_json built")
 
-    def build_json_comments_file_list(self):
+    def _get_page_count(self):
+        file = self._save_path + 'post1.json'
+        try:
+            with open(file, 'r', encoding='utf8') as f:
+                data = json.load(f)
+                return data['page_count']
+        except IOError:
+            print("ERROR: IO ERROR when load {0}".format(file))
+            quit()
+        except json.JSONDecodeError:
+            print("ERROR: Json file {0} decode error!".format(file))
+            quit()
+
+    def _parse_json_posts_file(self):
+        for file in self._json_posts_filename_list:
+            try:
+                with open(file, 'r', encoding='utf8') as f:
+                    data = json.load(f)
+                    posts = data['posts']
+                    for post in posts:
+                        self._posts_id.append(str(post['id']))
+
+            except json.JSONDecodeError:
+                print("ERROR: Json file {0} decode error!".format(file))
+                quit()
+
+    def _build_json_posts_file_list(self):
+        for root, dirs, files in os.walk(self._save_path):
+            for file in files:
+                if file[:3] == 'pos':
+                    self._json_posts_filename_list.append(self._save_path + file)
+
+    def _build_json_users_file_list(self):
+        for root, dirs, files in os.walk(self._save_path):
+            for file in files:
+                if file[:3] == 'use':
+                    self._json_users_filename_list.append(self._save_path + file)
+
+    def _build_json_comments_file_list(self):
         for root, dirs, files in os.walk(self._save_path):
             for file in files:
                 if file[:3] == 'com':
@@ -143,11 +186,12 @@ class AutoZendesk(object):
                 data = f.read()
                 print(data)
 
-    def initial_comments_postgresql(self):
+    def _initial_comments_postgresql(self):
         """
         build comment json table
         :return: None
         """
+        self._build_json_comments_file_list()
         self._connect_postgresql()
         cur = self._postgresql_conn.cursor()
         cur.execute("CREATE TABLE IF NOT EXISTS isv_comments_json (jdoc jsonb);")
@@ -163,7 +207,7 @@ class AutoZendesk(object):
         self._disconnect_postgresql()
         print("table isv_comments_json built")
 
-    def build_topics_postgresql(self):
+    def _build_topics_postgresql(self):
         """
 
         :return:
@@ -233,7 +277,7 @@ class AutoZendesk(object):
         cur.close()
         self._disconnect_postgresql()
 
-    def build_users_postgresql(self):
+    def _build_users_postgresql(self):
         """
 
         :return:
@@ -281,7 +325,6 @@ class AutoZendesk(object):
         """
                     )
 
-        self._json_users_filename_list = [self._save_path + 'users_1.json', self._save_path + 'users_2.json']
         for filename in self._json_users_filename_list:
             data = self._load_json(filename)
             users = data['results']
@@ -322,7 +365,7 @@ class AutoZendesk(object):
         cur.close()
         self._disconnect_postgresql()
 
-    def build_posts_postgresql(self):
+    def _build_posts_postgresql(self):
         """
         build post table
         :return: None
@@ -428,7 +471,7 @@ class AutoZendesk(object):
         self._disconnect_postgresql()
         print("table isv_posts built")
 
-    def build_comments_postgresql(self):
+    def _build_comments_postgresql(self):
         """
         build comment table
         :return: None
@@ -515,10 +558,13 @@ class AutoZendesk(object):
         :param filename: file name of json file need to load
         :return: raw data loaded from json file
         """
-        print(filename)
-        with open(filename, encoding='utf8') as json_file:
-            data = json.load(json_file)
-        return data
+        try:
+            with open(filename, encoding='utf8') as json_file:
+                data = json.load(json_file)
+                return data
+        except json.JSONDecodeError:
+            print("Error: Json file {0} decode error!".format(filename))
+            quit()
 
     @staticmethod
     def _remove_html_tags(raw):
@@ -551,7 +597,7 @@ class AutoZendesk(object):
                 os.remove(full_path)
         print("removing comments json files ...")
 
-    def remove_json_users_topics_files(self):
+    def _remove_json_users_topics_files(self):
         """
         remove generated json file(s)
         """
@@ -669,54 +715,44 @@ class AutoZendesk(object):
         """
         self._browser.quit()
 
+    def _collect_browser_page(self, js, file_name):
+        """
+        open a browser page and collect it
+        :param js: javascript command to open new browser page
+        :param file_name: file name to save collected data
+        :return: None
+        """
+        self._browser.execute_script(js)
+        base_handler = self._browser.current_window_handle
+        all_handler = self._browser.window_handles
+        for handler in all_handler:
+            if handler != base_handler:
+                self._browser.switch_to.window(handler)
+                full_path = self._save_path + file_name
+                if os.path.exists(full_path):
+                    os.remove(full_path)
+                file_object = codecs.open(full_path, 'w', 'utf-8')
+                raw_data = self._browser.page_source
+
+                file_object.write(self._remove_html_tags(raw_data))
+                file_object.close()
+                self._browser.close()
+        self._browser.switch_to.window(base_handler)
+
     def _collect_posts(self):
         """
         collect json file(s) from Zendesk API
         """
-        print("Collecting Posts...")
-        for page_cnt in range(1, self._total_page + 1):
-            js = 'window.open("https://jetadvantage.zendesk.com//api/v2/community/posts.json?page=' + str(
+        # collect the first page to get total page count
+        js = 'window.open("https://jetadvantage.zendesk.com/api/v2/community/posts.json?page=1");'
+        file_name = 'post1.json'
+        self._collect_browser_page(js, file_name)
+        # collect the rest pages
+        for page_cnt in range(2, self._total_page + 1):
+            js = 'window.open("https://jetadvantage.zendesk.com/api/v2/community/posts.json?page=' + str(
                 page_cnt) + '");'
-            self._browser.execute_script(js)
-            base_handler = self._browser.current_window_handle
-            all_handler = self._browser.window_handles
-            for handler in all_handler:
-                if handler != base_handler:
-                    self._browser.switch_to.window(handler)
-
-                    file_name = 'post' + str(page_cnt) + '.json'
-                    full_path = self._save_path + file_name
-                    if os.path.exists(full_path):
-                        os.remove(full_path)
-                    self._json_posts_filename_list.append(full_path)
-                    file_object = codecs.open(full_path, 'w', 'utf-8')
-                    raw_data = self._browser.page_source
-
-                    file_object.write(self._remove_html_tags(raw_data))
-                    file_object.close()
-                    self._browser.close()
-            self._browser.switch_to.window(base_handler)
-
-    def run_all(self):
-        self.drop_all_table_postgresql()
-        self._login_zendesk()
-        self._collect_posts()
-        self.initial_posts_postgresql()
-        self.build_posts_postgresql()
-        self._collect_comments()
-        self._collect_users()
-        self._collect_topics()
-        self._logout_zendesk()
-        self.initial_comments_postgresql()
-        self.build_comments_postgresql()
-        self.build_posts_excel()
-        self.build_comments_excel()
-        self.build_topics_postgresql()
-        self.build_users_postgresql()
-        self.build_update_record()
-        self._remove_json_posts_files()
-        self._remove_json_comments_files()
-        self.remove_json_users_topics_files()
+            file_name = 'post' + str(page_cnt) + '.json'
+            self._collect_browser_page(js, file_name)
 
     def _collect_comments(self):
         """
@@ -724,38 +760,13 @@ class AutoZendesk(object):
         :return: None
         """
         # TODO : now I consider all comments only have one page, should detect page count
-        self._connect_postgresql()
-        cur = self._postgresql_conn.cursor()
-        cur.execute("select id from isv_posts")
-        # data structure : [(id)(id),...,(id)]
-        load_ids = cur.fetchall()
-        ids = [id0[0] for id0 in load_ids]
-        self._postgresql_conn.commit()
-        cur.close()
-        self._disconnect_postgresql()
-        print("Collecting Comments...")
         # https://jetadvantage.zendesk.com/api/v2/community/posts/220794928/comments.json
-        for id0 in ids:
+        self._build_json_posts_file_list()
+        self._parse_json_posts_file()
+        for id0 in self._posts_id:
             js = 'window.open("https://jetadvantage.zendesk.com/api/v2/community/posts/' + id0 + '/comments.json");'
-            self._browser.execute_script(js)
-            base_handler = self._browser.current_window_handle
-            all_handler = self._browser.window_handles
-            for handler in all_handler:
-                if handler != base_handler:
-                    self._browser.switch_to.window(handler)
-
-                    file_name = 'comment_' + id0 + '.json'
-                    full_path = self._save_path + file_name
-                    if os.path.exists(full_path):
-                        os.remove(full_path)
-                    self._json_comments_filename_list.append(full_path)
-                    file_object = codecs.open(full_path, 'w', 'utf-8')
-                    raw_data = self._browser.page_source
-
-                    file_object.write(self._remove_html_tags(raw_data))
-                    file_object.close()
-                    self._browser.close()
-            self._browser.switch_to.window(base_handler)
+            file_name = 'comments_' + id0 + '.json'
+            self._collect_browser_page(js, file_name)
 
     def _collect_users(self):
         """
@@ -768,25 +779,8 @@ class AutoZendesk(object):
         for page_cnt in range(1, 3):
             js = 'window.open("https://jetadvantage.zendesk.com/api/v2/search.json?page=' + str(page_cnt) + \
                  '&query=created%3C2018-12-30");'
-            self._browser.execute_script(js)
-            base_handler = self._browser.current_window_handle
-            all_handler = self._browser.window_handles
-            for handler in all_handler:
-                if handler != base_handler:
-                    self._browser.switch_to.window(handler)
-
-                    file_name = 'users_' + str(page_cnt) + '.json'
-                    full_path = self._save_path + file_name
-                    if os.path.exists(full_path):
-                        os.remove(full_path)
-                    self._json_users_filename_list.append(full_path)
-                    file_object = codecs.open(full_path, 'w', 'utf-8')
-                    raw_data = self._browser.page_source
-
-                    file_object.write(self._remove_html_tags(raw_data))
-                    file_object.close()
-                    self._browser.close()
-            self._browser.switch_to.window(base_handler)
+            file_name = 'users_' + str(page_cnt) + '.json'
+            self._collect_browser_page(js, file_name)
 
     def _collect_topics(self):
         """
@@ -796,26 +790,10 @@ class AutoZendesk(object):
         print("Collecting Topics...")
         # https://jetadvantage.zendesk.com/api/v2/community/topics.json
         js = 'window.open("https://jetadvantage.zendesk.com/api/v2/community/topics.json");'
-        self._browser.execute_script(js)
-        base_handler = self._browser.current_window_handle
-        all_handler = self._browser.window_handles
-        for handler in all_handler:
-            if handler != base_handler:
-                self._browser.switch_to.window(handler)
+        file_name = 'topics.json'
+        self._collect_browser_page(js, file_name)
 
-                file_name = 'topics.json'
-                full_path = self._save_path + file_name
-                if os.path.exists(full_path):
-                    os.remove(full_path)
-                file_object = codecs.open(full_path, 'w', 'utf-8')
-                raw_data = self._browser.page_source
-
-                file_object.write(self._remove_html_tags(raw_data))
-                file_object.close()
-                self._browser.close()
-        self._browser.switch_to.window(base_handler)
-
-    def build_update_record(self):
+    def _build_update_record(self):
         """
         record database update record
         :return:
@@ -844,3 +822,25 @@ class AutoZendesk(object):
         self._postgresql_conn.commit()
         cur.close()
         self._disconnect_postgresql()
+
+    def run_all(self):
+        self._drop_all_table_postgresql()
+        self._login_zendesk()
+        self._collect_posts()
+        self._collect_comments()
+        self._collect_users()
+        self._collect_topics()
+        self._logout_zendesk()
+
+        self._initial_posts_postgresql()
+        self._build_posts_postgresql()
+        self._initial_comments_postgresql()
+        self._build_comments_postgresql()
+        self.build_posts_excel()
+        self.build_comments_excel()
+        self._build_topics_postgresql()
+        self._build_users_postgresql()
+        self._build_update_record()
+        self._remove_json_posts_files()
+        self._remove_json_comments_files()
+        self._remove_json_users_topics_files()
