@@ -29,6 +29,7 @@ Created on Thu Jan 18 14:06:16 2018
 # core mods
 import time
 import os
+import re
 import shutil
 
 
@@ -88,6 +89,14 @@ class AutoZendeskHelper(object):
                 os.remove(full_path)
         if os.path.exists(self._save_path + 'topics.json'):
             os.remove(self._save_path + 'topics.json')
+
+    def remove_all_json_files(self):
+        for r in os.listdir(self._save_path):
+            if os.path.isfile(r):
+                if re.match('^post.*.json', r) or re.match('^comment.*.json', r) or\
+                        re.match('^user.*.json', r) or re.match('^topic.*.json', r):
+                    os.remove(r)
+
 
     @staticmethod
     def move_excel():
