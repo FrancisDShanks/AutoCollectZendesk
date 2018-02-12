@@ -39,54 +39,36 @@ class AutoZendeskHelper(object):
         initial method
         """
         self._save_path = os.path.abspath('.') + '\\'
-
-        self._json_posts_filename_list = []
-        self._json_comments_filename_list = []
-        self._json_users_filename_list = []
-
-    def _build_json_posts_file_list(self):
-        for root, dirs, files in os.walk(self._save_path):
-            for file in files:
-                if file[:3] == 'pos':
-                    self._json_posts_filename_list.append(self._save_path + file)
-
-    def _build_json_users_file_list(self):
-        for root, dirs, files in os.walk(self._save_path):
-            for file in files:
-                if file[:3] == 'use':
-                    self._json_users_filename_list.append(self._save_path + file)
-
-    def _build_json_comments_file_list(self):
-        for root, dirs, files in os.walk(self._save_path):
-            for file in files:
-                if file[:3] == 'com':
-                    self._json_comments_filename_list.append(self._save_path + file)
+        self._shared_folder = '\\\\192.168.8.55\\ISV-Share\\FrancisDu\\sourcecode\\'
 
     def _remove_json_posts_files(self):
         """
         remove generated json file(s)
         """
-        for file in self._json_posts_filename_list:
-            if os.path.exists(file):
-                os.remove(file)
+        for root, dirs, files in os.walk(self._save_path):
+            for file in files:
+                if file[:3] == 'pos':
+                    os.remove(file)
         print("removing posts json files ...")
 
     def _remove_json_comments_files(self):
         """
         remove generated json file(s)
         """
-        for file in self._json_comments_filename_list:
-            if os.path.exists(file):
-                os.remove(file)
+        for root, dirs, files in os.walk(self._save_path):
+            for file in files:
+                if file[:3] == 'com':
+                    os.remove(file)
         print("removing comments json files ...")
 
     def _remove_json_users_topics_files(self):
         """
         remove generated json file(s)
         """
-        for full_path in self._json_users_filename_list:
-            if os.path.exists(full_path):
-                os.remove(full_path)
+        for root, dirs, files in os.walk(self._save_path):
+            for file in files:
+                if file[:3] == 'use':
+                    os.remove(file)
         if os.path.exists(self._save_path + 'topics.json'):
             os.remove(self._save_path + 'topics.json')
 
@@ -97,10 +79,21 @@ class AutoZendeskHelper(object):
                         re.match('^user.*.json', r) or re.match('^topic.*.json', r):
                     os.remove(r)
 
+    def move_json_from_shared_folder(self):
+        for file in os.listdir(self._shared_folder):
+            source = os.path.join(self._shared_folder, file)
+            if os.path.isfile(source) and re.match(r'^.*.json', file):
+                shutil.copyfile(source, os.path.join(self._save_path, file))
+                os.remove(source)
 
-    @staticmethod
-    def move_excel():
-        source = 'D:\\workspace_Francis_Du\\PycharmProjects\\zendesk\\'
+    def move_json_to_shared_folder(self):
+        for file in os.listdir(self._save_path):
+            source = os.path.join(self._save_path, file)
+            if os.path.isfile(source) and re.match(r'^.*.json', file):
+                shutil.copyfile(source, os.path.join(self._shared_folder, file))
+                os.remove(source)
+
+    def move_excel(self):
         des1 = 'D:\\workspace_Francis_Du\\PycharmProjects\\mysite\\static\\docs\\'
         des2 = '\\\\192.168.8.55\\ISV-Share\\FrancisDu\\zendeskRecords\\'
 
@@ -118,18 +111,14 @@ class AutoZendeskHelper(object):
         com_name = '_'.join((str(year), str(month), str(day)))
         com_name = ''.join(('comments_', com_name, '.xls'))
 
-        shutil.copyfile(source + post_name, des1 + post_name)
-        shutil.copyfile(source + post_name, des2 + post_name)
-        shutil.copyfile(source + com_name, des1 + com_name)
-        shutil.copyfile(source + com_name, des2 + com_name)
-        os.remove(source + post_name)
-        os.remove(source + com_name)
+        shutil.copyfile(self._save_path + post_name, des1 + post_name)
+        shutil.copyfile(self._save_path + post_name, des2 + post_name)
+        shutil.copyfile(self._save_path + com_name, des1 + com_name)
+        shutil.copyfile(self._save_path + com_name, des2 + com_name)
+        os.remove(self._save_path + post_name)
+        os.remove(self._save_path + com_name)
 
     def run_remove_json_files(self):
-        self._build_json_posts_file_list()
-        self._build_json_comments_file_list()
-        self._build_json_users_file_list()
-
         self._remove_json_posts_files()
         self._remove_json_comments_files()
         self._remove_json_users_topics_files()
