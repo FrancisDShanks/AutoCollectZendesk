@@ -157,6 +157,8 @@ class AutoZendeskCrawling(object):
         js = 'window.open("https://jetadvantage.zendesk.com/api/v2/community/posts.json?page=1");'
         file_name = 'post1.json'
         self._collect_browser_page(js, file_name)
+        # find total page count from the first page
+        self._total_page = self._get_page_count()
         # collect the rest pages
         for page_cnt in range(2, self._total_page + 1):
             js = 'window.open("https://jetadvantage.zendesk.com/api/v2/community/posts.json?page=' + str(
