@@ -18,7 +18,11 @@ Created on Thu Jan 18 14:06:16 2018
 
 @author: Francis Xufan Du - BEYONDSOFT INC.
 @email: duxufan@beyondsoft.com xufan.du@gmail.com
-@Version: 	02/2018 0.5-Beta: separate crawling logic and database logic
+@Version: 	03/2018 0.6-Beta:   1. update the tool to only collect the necessary data
+                                2. change database updating logic (old way: delete all and re-create new table,
+                                new way: update or insert)
+                                3. fix bugs
+            02/2018 0.5-Beta: separate crawling logic and database logic
             02/2018 0.4-Beta: add database update recording
             02/2018 0.3-Beta: add users and topics data collecting
             01/2018 0.2-Beta: add database storage

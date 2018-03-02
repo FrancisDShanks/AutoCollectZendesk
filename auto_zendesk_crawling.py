@@ -18,7 +18,11 @@ Created on Thu Jan 18 14:06:16 2018
 
 @author: Francis Xufan Du - BEYONDSOFT INC.
 @email: duxufan@beyondsoft.com xufan.du@gmail.com
-@Version: 	02/2018 0.5-Beta: separate crawling logic and database logic
+@Version: 	03/2018 0.6-Beta:   1. update the tool to only collect the necessary data
+                                2. change database updating logic (old way: delete all and re-create new table,
+                                new way: update or insert)
+                                3. fix bugs
+            02/2018 0.5-Beta: separate crawling logic and database logic
             02/2018 0.4-Beta: add database update recording
             02/2018 0.3-Beta: add users and topics data collecting
             01/2018 0.2-Beta: add database storage
@@ -31,6 +35,7 @@ import codecs
 import os
 import json
 import time
+import datetime
 import re
 
 from selenium import webdriver
@@ -51,10 +56,11 @@ class AutoZendeskCrawling(object):
         self._chrome_driver_path = chrome_driver_path
         self._save_path = os.path.abspath('.') + '\\'
 
-        self._total_page = 9
+        self._total_page = 1
         self._initial_page = r'https://developers.hp.com/user/login?destination=hp-zendesk-sso'
         self._browser = None
         self._zendesk_main_page = r'https://jetadvantage.zendesk.com/hc/en-us'
+        self._LATEST_DAYS_DATA_TO_COLLECT = 10
 
         self._posts_id = []
         self._json_posts_filename_list = []
@@ -79,7 +85,17 @@ class AutoZendeskCrawling(object):
                     data = json.load(f)
                     posts = data['posts']
                     for post in posts:
-                        self._posts_id.append(str(post['id']))
+                        update_str = post['updated_at']
+                        update_time = datetime.datetime.strptime(update_str, "%Y-%m-%dT%H:%M:%SZ")
+
+                        c_time = datetime.datetime.now()
+                        days = (c_time - update_time).days
+
+                        # only collects those posts' comments which has been updated in 15 days
+                        if days < self._LATEST_DAYS_DATA_TO_COLLECT:
+                            # print(post['id'], update_time)
+                            # print(days)
+                            self._posts_id.append(str(post['id']))
 
             except json.JSONDecodeError:
                 print("ERROR: Json file {0} decode error!".format(file))
@@ -186,7 +202,7 @@ class AutoZendeskCrawling(object):
         :return: None
         """
         # TODO: auto build query http address
-        print("Collecting Users...")
+        # print("Collecting Users...")
         # https://jetadvantage.zendesk.com/api/v2/search.json?page=1&query=created%3C2018-12-30
         for page_cnt in range(1, 3):
             js = 'window.open("https://jetadvantage.zendesk.com/api/v2/search.json?page=' + str(page_cnt) + \
@@ -199,7 +215,7 @@ class AutoZendeskCrawling(object):
         collect zendesk forum topics info
         :return: None
         """
-        print("Collecting Topics...")
+        # print("Collecting Topics...")
         # https://jetadvantage.zendesk.com/api/v2/community/topics.json
         js = 'window.open("https://jetadvantage.zendesk.com/api/v2/community/topics.json");'
         file_name = 'topics.json'
@@ -214,3 +230,4 @@ class AutoZendeskCrawling(object):
         self._collect_topics()
 
         self._logout_zendesk()
+

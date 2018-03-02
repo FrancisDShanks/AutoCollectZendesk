@@ -18,7 +18,11 @@ Created on Thu Jan 18 14:06:16 2018
 
 @author: Francis Xufan Du - BEYONDSOFT INC.
 @email: duxufan@beyondsoft.com xufan.du@gmail.com
-@Version: 	02/2018 0.5-Beta: separate crawling logic and database logic
+@Version: 	03/2018 0.6-Beta:   1. update the tool to only collect the necessary data
+                                2. change database updating logic (old way: delete all and re-create new table,
+                                new way: update or insert)
+                                3. fix bugs
+            02/2018 0.5-Beta: separate crawling logic and database logic
             02/2018 0.4-Beta: add database update recording
             02/2018 0.3-Beta: add users and topics data collecting
             01/2018 0.2-Beta: add database storage
@@ -31,6 +35,7 @@ import os
 import json
 import xlwt
 import time
+import re
 
 # 3rd party mods
 import psycopg2
@@ -94,7 +99,7 @@ class AutoZendeskDB(object):
         self._connect_postgresql()
         cur = self._postgresql_conn.cursor()
         cur.execute("DROP TABLE IF EXISTS isv_posts;")
-        cur.execute("DROP TABLE IF EXISTS isv_posts_json;")
+
         cur.execute("DROP TABLE IF EXISTS isv_comments;")
         cur.execute("DROP TABLE IF EXISTS isv_comments_json;")
         self._postgresql_conn.commit()
@@ -111,18 +116,25 @@ class AutoZendeskDB(object):
 
         self._connect_postgresql()
         cur = self._postgresql_conn.cursor()
-        cur.execute("CREATE TABLE IF NOT EXISTS isv_posts_json (jdoc jsonb);")
+        cur.execute("CREATE TABLE IF NOT EXISTS isv_posts_json (id VARCHAR PRIMARY KEY, jdoc jsonb);")
 
         for filename in self._json_posts_filename_list:
             data = self._load_json(filename)
             posts = data['posts']
             for post in posts:
-                cur.execute("INSERT INTO isv_posts_json (jdoc) VALUES(%s);", [psycopg2.extras.Json(post)])
+                cur.execute("SELECT * FROM isv_posts_json WHERE id = %s;", (str(post['id']),))
+                result = cur.fetchall()
+                if result:
+                    command = "UPDATE isv_posts_json SET jdoc = %s WHERE id = %s;"
+                    cur.execute(command, [psycopg2.extras.Json(post), str(post['id'])])
+                else:
+                    cur.execute("INSERT INTO isv_posts_json (id, jdoc) VALUES(%s, %s);",
+                                [str(post['id']), psycopg2.extras.Json(post)])
 
         self._postgresql_conn.commit()
         cur.close()
         self._disconnect_postgresql()
-        print("table isv_posts_json built")
+        # print("table isv_posts_json built")
 
     def _parse_json_posts_file(self):
         for file in self._json_posts_filename_list:
@@ -140,26 +152,26 @@ class AutoZendeskDB(object):
     def _build_json_posts_file_list(self):
         for root, dirs, files in os.walk(self._save_path):
             for file in files:
-                if file[:3] == 'pos':
+                if re.match('^post.*.json', file):
                     self._json_posts_filename_list.append(self._save_path + file)
 
     def _build_json_users_file_list(self):
         for root, dirs, files in os.walk(self._save_path):
             for file in files:
-                if file[:3] == 'use':
+                if re.match('^user.*.json', file):
                     self._json_users_filename_list.append(self._save_path + file)
 
     def _build_json_comments_file_list(self):
         for root, dirs, files in os.walk(self._save_path):
             for file in files:
-                if file[:3] == 'com':
+                if re.match('^comment.*.json', file):
                     self._json_comments_filename_list.append(self._save_path + file)
 
-        for j in self._json_comments_filename_list:
-            print(j)
-            with open(j, 'r', encoding='utf8') as f:
-                data = f.read()
-                print(data)
+        # for j in self._json_comments_filename_list:
+            # print(j)
+            # with open(j, 'r', encoding='utf8') as f:
+            #     data = f.read()
+            #     print(data)
 
     def _initial_comments_postgresql(self):
         """
@@ -169,13 +181,25 @@ class AutoZendeskDB(object):
         self._build_json_comments_file_list()
         self._connect_postgresql()
         cur = self._postgresql_conn.cursor()
-        cur.execute("CREATE TABLE IF NOT EXISTS isv_comments_json (jdoc jsonb);")
+        cur.execute("""
+                    CREATE TABLE IF NOT EXISTS isv_comments_json (
+                    id VARCHAR PRIMARY KEY,
+                    post_id VARCHAR,
+                    jdoc jsonb);
+                    """)
 
         for filename in self._json_comments_filename_list:
             data = self._load_json(filename)
             comments = data['comments']
             for comment in comments:
-                cur.execute("INSERT INTO isv_comments_json (jdoc) VALUES(%s);", [psycopg2.extras.Json(comment)])
+                cur.execute("SELECT * FROM isv_comments_json WHERE id=%s;", (str(comment['id']),))
+                result = cur.fetchall()
+                if result:
+                    command = "UPDATE isv_comments_json SET jdoc = %s WHERE id = %s;"
+                    cur.execute(command, [psycopg2.extras.Json(comment), str(comment['id'])])
+                else:
+                    command = "INSERT INTO isv_comments_json (id, post_id, jdoc) VALUES(%s, %s, %s);"
+                    cur.execute(command, [str(comment['id']), str(comment['post_id']), psycopg2.extras.Json(comment)])
 
         self._postgresql_conn.commit()
         cur.close()
@@ -183,9 +207,10 @@ class AutoZendeskDB(object):
         print("table isv_comments_json built")
 
     def _build_topics_postgresql(self):
-        """
 
-        :return:
+        """
+        build isv_topics table in database
+        :return: None
         """
         # TODO:check if json file exists
         self._connect_postgresql()
@@ -203,7 +228,6 @@ class AutoZendeskDB(object):
         "updated_at": varchar
         "user_segment_id": varchar
         """
-        cur.execute("DROP TABLE IF EXISTS isv_topics")
         cur.execute("""
         CREATE TABLE IF NOT EXISTS isv_topics (
         id varchar PRIMARY KEY,
@@ -234,19 +258,49 @@ class AutoZendeskDB(object):
             updated_at_time = updated_at[11:-1]
             updated_at = updated_at_date + ' ' + updated_at_time
 
-            command = "INSERT INTO isv_topics VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);"
-            cur.execute(command, (str(topic['id']),
-                                  topic['url'],
-                                  topic['html_url'],
-                                  topic['name'],
-                                  topic['description'],
-                                  str(topic['position']),
-                                  str(topic['follower_count']),
-                                  str(topic['community_id']),
-                                  created_at,
-                                  updated_at,
-                                  str(topic['user_segment_id'])
-                                  ))
+            cur.execute("SELECT * FROM isv_topics WHERE id = %s;", (str(topic['id']),))
+            result = cur.fetchall()
+            # if record already exists, update it
+            # or insert the new record
+            if result:
+                command = """UPDATE isv_topics SET url = %s, 
+                          html_url = %s,
+                          name = %s,
+                          description = %s,
+                          position = %s,
+                          follower_count = %s,
+                          community_id = %s,
+                          created_at = %s,
+                          updated_at = %s,
+                          user_segment_id = %s WHERE id = %s;
+                          """
+                cur.execute(command, (topic['url'],
+                                      topic['html_url'],
+                                      topic['name'],
+                                      topic['description'],
+                                      str(topic['position']),
+                                      str(topic['follower_count']),
+                                      str(topic['community_id']),
+                                      created_at,
+                                      updated_at,
+                                      str(topic['user_segment_id']),
+                                      str(topic['id'])
+                                      ))
+
+            else:
+                command = "INSERT INTO isv_topics VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);"
+                cur.execute(command, (str(topic['id']),
+                                      topic['url'],
+                                      topic['html_url'],
+                                      topic['name'],
+                                      topic['description'],
+                                      str(topic['position']),
+                                      str(topic['follower_count']),
+                                      str(topic['community_id']),
+                                      created_at,
+                                      updated_at,
+                                      str(topic['user_segment_id'])
+                                      ))
 
         self._postgresql_conn.commit()
         cur.close()
@@ -278,7 +332,6 @@ class AutoZendeskDB(object):
         "verified": bool
         "result_type": varchar
         """
-        cur.execute("DROP TABLE IF EXISTS isv_users")
         cur.execute("""
         CREATE TABLE IF NOT EXISTS isv_users (
         id varchar PRIMARY KEY,
@@ -318,24 +371,64 @@ class AutoZendeskDB(object):
                 updated_at_date = updated_at[:10]
                 updated_at_time = updated_at[11:-1]
                 updated_at = updated_at_date + ' ' + updated_at_time
-                command = "INSERT INTO isv_users VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);"
-                cur.execute(command, (str(user['id']),
-                                      user['url'],
-                                      user['name'],
-                                      user['email'],
-                                      created_at,
-                                      updated_at,
-                                      user['time_zone'],
-                                      str(user['phone']),
-                                      str(user['shared_phone_number']),
-                                      str(user['photo']),
-                                      str(user['locale_id']),
-                                      user['locale'],
-                                      str(user['organization_id']),
-                                      user['role'],
-                                      user['verified'],
-                                      user['result_type']
-                                      ))
+
+                cur.execute("SELECT * FROM isv_users WHERE id = %s;", (str(user['id']),))
+                result = cur.fetchall()
+
+                if result:
+                    command = """UPDATE isv_users SET url = %s,
+                                name = %s,
+                                email = %s,
+                                created_at = %s,
+                                updated_at = %s,
+                                time_zone = %s,
+                                phone = %s,
+                                shared_phone_number = %s,
+                                photo = %s,
+                                locale_id = %s,
+                                locale = %s,
+                                organization_id = %s,
+                                role = %s,
+                                verified = %s,
+                                result_type = %s WHERE id = %s   
+                                """
+                    cur.execute(command, (
+                        user['url'],
+                        user['name'],
+                        user['email'],
+                        created_at,
+                        updated_at,
+                        user['time_zone'],
+                        str(user['phone']),
+                        str(user['shared_phone_number']),
+                        str(user['photo']),
+                        str(user['locale_id']),
+                        user['locale'],
+                        str(user['organization_id']),
+                        user['role'],
+                        user['verified'],
+                        user['result_type'],
+                        str(user['id'])
+                    ))
+                else:
+                    command = "INSERT INTO isv_users VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);"
+                    cur.execute(command, (str(user['id']),
+                                          user['url'],
+                                          user['name'],
+                                          user['email'],
+                                          created_at,
+                                          updated_at,
+                                          user['time_zone'],
+                                          str(user['phone']),
+                                          str(user['shared_phone_number']),
+                                          str(user['photo']),
+                                          str(user['locale_id']),
+                                          user['locale'],
+                                          str(user['organization_id']),
+                                          user['role'],
+                                          user['verified'],
+                                          user['result_type']
+                                          ))
 
         self._postgresql_conn.commit()
         cur.close()
@@ -349,7 +442,7 @@ class AutoZendeskDB(object):
         self._connect_postgresql()
         cur = self._postgresql_conn.cursor()
         # TODO exception handler when table not exists
-        cur.execute("select * from isv_posts_json")
+        cur.execute("select jdoc from isv_posts_json")
         posts = cur.fetchall()
         # posts = [({})]
         """
@@ -421,26 +514,70 @@ class AutoZendeskDB(object):
             t = time.strptime(updated_at, '%Y-%m-%d %H:%M:%S')
             updated_at_timestamp = time.mktime(t)
 
-            command = "INSERT INTO isv_posts VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);"
-            cur.execute(command, (str(post['id']),
-                                  post['url'],
-                                  post['title'],
-                                  post['closed'],
-                                  post['pinned'],
-                                  post['status'],
-                                  post['details'],
-                                  post['featured'],
-                                  post['html_url'],
-                                  str(post['topic_id']),
-                                  post['vote_sum'],
-                                  str(post['author_id']),
-                                  created_at_timestamp,
-                                  created_at,
-                                  updated_at_timestamp,
-                                  updated_at,
-                                  post['vote_count'],
-                                  post['comment_count'],
-                                  post['follower_count']))
+            cur.execute("SELECT * FROM isv_posts WHERE id = %s;", (str(post['id']),))
+            result = cur.fetchall()
+            if result:
+                command = """UPDATE isv_posts SET url = %s,
+                            title = %s, 
+                            closed = %s, 
+                            pinned = %s, 
+                            status = %s, 
+                            details = %s, 
+                            featured = %s, 
+                            html_url = %s, 
+                            topic_id = %s, 
+                            vote_sum = %s, 
+                            author_id = %s, 
+                            created_at_timestamp = %s,
+                            created_at_str = %s, 
+                            updated_at_timestamp = %s,
+                            updated_at_str = %s, 
+                            vote_count = %s, 
+                            comment_count = %s, 
+                            follower_count = %s WHERE id = %s;
+                            """
+                cur.execute(command, (
+                    post['url'],
+                    post['title'],
+                    post['closed'],
+                    post['pinned'],
+                    post['status'],
+                    post['details'],
+                    post['featured'],
+                    post['html_url'],
+                    str(post['topic_id']),
+                    post['vote_sum'],
+                    str(post['author_id']),
+                    created_at_timestamp,
+                    created_at,
+                    updated_at_timestamp,
+                    updated_at,
+                    post['vote_count'],
+                    post['comment_count'],
+                    post['follower_count'],
+                    str(post['id'])
+                ))
+            else:
+                command = "INSERT INTO isv_posts VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);"
+                cur.execute(command, (str(post['id']),
+                                      post['url'],
+                                      post['title'],
+                                      post['closed'],
+                                      post['pinned'],
+                                      post['status'],
+                                      post['details'],
+                                      post['featured'],
+                                      post['html_url'],
+                                      str(post['topic_id']),
+                                      post['vote_sum'],
+                                      str(post['author_id']),
+                                      created_at_timestamp,
+                                      created_at,
+                                      updated_at_timestamp,
+                                      updated_at,
+                                      post['vote_count'],
+                                      post['comment_count'],
+                                      post['follower_count']))
 
         self._postgresql_conn.commit()
         cur.close()
@@ -455,7 +592,7 @@ class AutoZendeskDB(object):
         self._connect_postgresql()
         cur = self._postgresql_conn.cursor()
         # TODO exception handler when table not exists
-        cur.execute("select * from isv_comments_json")
+        cur.execute("select jdoc from isv_comments_json")
         comments = cur.fetchall()
         # comments = [({})]
         """
@@ -507,20 +644,52 @@ class AutoZendeskDB(object):
             t = time.strptime(updated_at, '%Y-%m-%d %H:%M:%S')
             updated_at_timestamp = time.mktime(t)
 
-            command = "INSERT INTO isv_comments VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);"
-            cur.execute(command, (str(comment['id']),
-                                  comment['url'],
-                                  comment['body'],
-                                  str(comment['post_id']),
-                                  comment['html_url'],
-                                  comment['official'],
-                                  comment['vote_sum'],
-                                  str(comment['author_id']),
-                                  created_at_timestamp,
-                                  created_at,
-                                  updated_at_timestamp,
-                                  updated_at,
-                                  comment['vote_count'],))
+            cur.execute("SELECT * FROM isv_comments WHERE id=%s;", (str(comment['id']),))
+            result = cur.fetchall()
+            if result:
+                command = """UPDATE isv_comments SET url = %s,
+                                body = %s,
+                                post_id = %s, 
+                                html_url = %s, 
+                                official = %s,
+                                vote_sum = %s, 
+                                author_id = %s, 
+                                created_at_timestamp = %s,
+                                created_at_str = %s, 
+                                updated_at_timestamp = %s,
+                                updated_at_str = %s, 
+                                vote_count = %s WHERE id = %s;
+                            """
+                cur.execute(command, (
+                                      comment['url'],
+                                      comment['body'],
+                                      str(comment['post_id']),
+                                      comment['html_url'],
+                                      comment['official'],
+                                      comment['vote_sum'],
+                                      str(comment['author_id']),
+                                      created_at_timestamp,
+                                      created_at,
+                                      updated_at_timestamp,
+                                      updated_at,
+                                      comment['vote_count'],
+                                      str(comment['id']),
+                ))
+            else:
+                command = "INSERT INTO isv_comments VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);"
+                cur.execute(command, (str(comment['id']),
+                                      comment['url'],
+                                      comment['body'],
+                                      str(comment['post_id']),
+                                      comment['html_url'],
+                                      comment['official'],
+                                      comment['vote_sum'],
+                                      str(comment['author_id']),
+                                      created_at_timestamp,
+                                      created_at,
+                                      updated_at_timestamp,
+                                      updated_at,
+                                      comment['vote_count'],))
 
         self._postgresql_conn.commit()
         cur.close()
@@ -566,7 +735,7 @@ class AutoZendeskDB(object):
         self._connect_postgresql()
         cur = self._postgresql_conn.cursor()
         # TODO exception handler when table not exists
-        cur.execute("select * from isv_posts_json")
+        cur.execute("select jdoc from isv_posts_json")
         posts = cur.fetchall()
 
         for p in posts:
@@ -602,7 +771,7 @@ class AutoZendeskDB(object):
         self._connect_postgresql()
         cur = self._postgresql_conn.cursor()
         # TODO exception handler when table not exists
-        cur.execute("select * from isv_comments_json")
+        cur.execute("select jdoc from isv_comments_json")
         comments = cur.fetchall()
 
         for c in comments:
@@ -658,8 +827,6 @@ class AutoZendeskDB(object):
         self._disconnect_postgresql()
 
     def run_all(self):
-        self._drop_all_table_postgresql()
-
         self._initial_posts_postgresql()
         self._build_posts_postgresql()
         self._initial_comments_postgresql()
@@ -671,3 +838,6 @@ class AutoZendeskDB(object):
         self._build_topics_postgresql()
         self._build_users_postgresql()
         self._build_update_record()
+
+    def test(self):
+        self._build_json_users_file_list()
