@@ -1,4 +1,5 @@
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python
+#  -*- coding: utf-8 -*-
 """
 Copyright 2018 Francis Xufan Du - BEYONDSOFT INC.
 
@@ -42,7 +43,6 @@ import psycopg2
 import psycopg2.extras
 
 
-# TODO: update database instead of rebuild it
 class AutoZendeskDB(object):
     def __init__(self, postgresql_dbname, postgresql_user, postgresql_passwd, postgresql_host, postgresql_port):
         """
@@ -55,6 +55,7 @@ class AutoZendeskDB(object):
         """
         self._save_path = os.path.abspath('.') + '\\'
 
+        # length limit of a excel cell
         self._EXCEL_MAXIMUM_CELL = 32767
         self._posts_id = []
 
@@ -71,7 +72,7 @@ class AutoZendeskDB(object):
 
     def _connect_postgresql(self):
         """
-        connect postgresql database
+        connect to postgresql database.
         :return: None
         """
         self._postgresql_conn = psycopg2.connect(dbname=self._postgresql_dbname,
@@ -85,7 +86,7 @@ class AutoZendeskDB(object):
 
     def _disconnect_postgresql(self):
         """
-        disconnect database
+        disconnect database.
         :return: None
         """
         self._postgresql_conn.close()
@@ -114,7 +115,6 @@ class AutoZendeskDB(object):
         self._build_json_posts_file_list()
         self._parse_json_posts_file()
 
-        self._connect_postgresql()
         cur = self._postgresql_conn.cursor()
         cur.execute("CREATE TABLE IF NOT EXISTS isv_posts_json (id VARCHAR PRIMARY KEY, jdoc jsonb);")
 
@@ -133,8 +133,7 @@ class AutoZendeskDB(object):
 
         self._postgresql_conn.commit()
         cur.close()
-        self._disconnect_postgresql()
-        # print("table isv_posts_json built")
+        print("table isv_posts_json updated")
 
     def _parse_json_posts_file(self):
         for file in self._json_posts_filename_list:
@@ -179,7 +178,7 @@ class AutoZendeskDB(object):
         :return: None
         """
         self._build_json_comments_file_list()
-        self._connect_postgresql()
+
         cur = self._postgresql_conn.cursor()
         cur.execute("""
                     CREATE TABLE IF NOT EXISTS isv_comments_json (
@@ -203,8 +202,8 @@ class AutoZendeskDB(object):
 
         self._postgresql_conn.commit()
         cur.close()
-        self._disconnect_postgresql()
-        print("table isv_comments_json built")
+
+        print("table isv_comments_json updated")
 
     def _build_topics_postgresql(self):
 
@@ -212,8 +211,6 @@ class AutoZendeskDB(object):
         build isv_topics table in database
         :return: None
         """
-        # TODO:check if json file exists
-        self._connect_postgresql()
         cur = self._postgresql_conn.cursor()
         """
         "id": varchar
@@ -244,8 +241,15 @@ class AutoZendeskDB(object):
         );
         """
                     )
+        try:
+            data = self._load_json(self._save_path + r'topics.json')
+        except IOError:
+            print("ERROR: IO ERROR when load {0}".format(self._save_path + r'topics.json'))
+            quit()
+        except json.JSONDecodeError:
+            print("ERROR: Json file {0} decode error!".format(self._save_path + r'topics.json'))
+            quit()
 
-        data = self._load_json(self._save_path + r'topics.json')
         topics = data['topics']
         for topic in topics:
             created_at = topic['created_at']
@@ -304,16 +308,15 @@ class AutoZendeskDB(object):
 
         self._postgresql_conn.commit()
         cur.close()
-        self._disconnect_postgresql()
+        print("table isv_topics updated")
 
     def _build_users_postgresql(self):
         """
 
         :return:
         """
-        self._connect_postgresql()
-        cur = self._postgresql_conn.cursor()
         self._build_json_users_file_list()
+        cur = self._postgresql_conn.cursor()
         """
         "id": varchar
         "url": varchar
@@ -355,7 +358,15 @@ class AutoZendeskDB(object):
                     )
 
         for filename in self._json_users_filename_list:
-            data = self._load_json(filename)
+            try:
+                data = self._load_json(filename)
+            except IOError:
+                print("ERROR: IO ERROR when load {0}".format(filename))
+                quit()
+            except json.JSONDecodeError:
+                print("ERROR: Json file {0} decode error!".format(filename))
+                quit()
+
             users = data['results']
             for user in users:
                 # TODO: why 3 tickets here?
@@ -432,17 +443,20 @@ class AutoZendeskDB(object):
 
         self._postgresql_conn.commit()
         cur.close()
-        self._disconnect_postgresql()
+        print("table isv_users updated")
 
     def _build_posts_postgresql(self):
         """
         build post table
         :return: None
         """
-        self._connect_postgresql()
+
         cur = self._postgresql_conn.cursor()
-        # TODO exception handler when table not exists
-        cur.execute("select jdoc from isv_posts_json")
+        try:
+            cur.execute("select jdoc from isv_posts_json")
+        except Exception:
+            print("Error, check if table isv_posts_json exists")
+
         posts = cur.fetchall()
         # posts = [({})]
         """
@@ -581,18 +595,18 @@ class AutoZendeskDB(object):
 
         self._postgresql_conn.commit()
         cur.close()
-        self._disconnect_postgresql()
-        print("table isv_posts built")
+        print("table isv_posts updated")
 
     def _build_comments_postgresql(self):
         """
         build comment table
         :return: None
         """
-        self._connect_postgresql()
         cur = self._postgresql_conn.cursor()
-        # TODO exception handler when table not exists
-        cur.execute("select jdoc from isv_comments_json")
+        try:
+            cur.execute("select jdoc from isv_comments_json")
+        except Exception:
+            print("Error, check if table isv_comments_json exists")
         comments = cur.fetchall()
         # comments = [({})]
         """
@@ -693,8 +707,7 @@ class AutoZendeskDB(object):
 
         self._postgresql_conn.commit()
         cur.close()
-        self._disconnect_postgresql()
-        print("table isv_comments built")
+        print("table isv_comments updated")
 
     @staticmethod
     def _load_json(filename):
@@ -724,7 +737,7 @@ class AutoZendeskDB(object):
 
         return save_filename
 
-    def build_posts_excel(self):
+    def build_posts_excel_from_db(self):
         """
         build Excel report file from collected json files
         """
@@ -732,10 +745,12 @@ class AutoZendeskDB(object):
         ws = wb.add_sheet('All Posts')
         row_cnt = 0
 
-        self._connect_postgresql()
         cur = self._postgresql_conn.cursor()
-        # TODO exception handler when table not exists
-        cur.execute("select jdoc from isv_posts_json")
+        try:
+            cur.execute("select jdoc from isv_posts_json")
+        except Exception:
+            print("Error, check if table isv_posts_json exists")
+
         posts = cur.fetchall()
 
         for p in posts:
@@ -759,8 +774,10 @@ class AutoZendeskDB(object):
                 ws.write(row_cnt, count, str(post[key]))
                 count += 1
         wb.save(self._build_excel_filename('posts'))
+        cur.close()
+        print("build post excel")
 
-    def build_comments_excel(self):
+    def build_comments_excel_from_db(self):
         """
         build Excel report file from collected json files
         """
@@ -768,10 +785,12 @@ class AutoZendeskDB(object):
         ws = wb.add_sheet('All comments')
         row_cnt = 0
 
-        self._connect_postgresql()
         cur = self._postgresql_conn.cursor()
-        # TODO exception handler when table not exists
-        cur.execute("select jdoc from isv_comments_json")
+        try:
+            cur.execute("select jdoc from isv_comments_json")
+        except Exception:
+            print("Error, check if table isv_comments_json exists")
+
         comments = cur.fetchall()
 
         for c in comments:
@@ -795,13 +814,14 @@ class AutoZendeskDB(object):
                 ws.write(row_cnt, count, str(comment[key]))
                 count += 1
         wb.save(self._build_excel_filename('comments'))
+        cur.close()
+        print("built comments excel")
 
     def _build_update_record(self):
         """
         record database update record
         :return:
         """
-        self._connect_postgresql()
         cur = self._postgresql_conn.cursor()
 
         cur.execute("CREATE TABLE IF NOT EXISTS isv_update "
@@ -816,28 +836,36 @@ class AutoZendeskDB(object):
         if len(day) < 2:
             day = '0' + day
         hour = str(t.tm_hour)
+        if len(hour) < 2:
+            hour = '0' + hour
         m = str(t.tm_min)
+        if len(m) < 2:
+            m = '0' + m
         sec = str(t.tm_sec)
+        if len(sec) < 2:
+            sec = '0' + sec
         date = '/'.join((year, month, day))
         tt = ':'.join((hour, m, sec))
         command = "INSERT INTO isv_update VALUES(%s,%s,%s);"
         cur.execute(command, (str(ts), date, tt))
         self._postgresql_conn.commit()
         cur.close()
-        self._disconnect_postgresql()
+        print("table isv_update updated")
 
     def run_all(self):
+        self._connect_postgresql()
         self._initial_posts_postgresql()
         self._build_posts_postgresql()
         self._initial_comments_postgresql()
         self._build_comments_postgresql()
 
-        self.build_posts_excel()
-        self.build_comments_excel()
+        self.build_posts_excel_from_db()
+        self.build_comments_excel_from_db()
 
         self._build_topics_postgresql()
         self._build_users_postgresql()
         self._build_update_record()
+        self._disconnect_postgresql()
 
     def test(self):
         self._build_json_users_file_list()
