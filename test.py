@@ -14,6 +14,12 @@ def run_database():
     d.run_all()
 
 
+def isv_status_update():
+    h = auto_zendesk_helper.AutoZendeskHelper()
+    d = auto_zendesk_db.AutoZendeskDB("isv_zendesk", "postgres", "Dxf3529!", "127.0.0.1", "5432")
+    d.update_isv_status(h.read_xlsx())
+
+
 def run_helper():
     e = auto_zendesk_helper.AutoZendeskHelper()
     e.remove_all_json_files()
@@ -21,4 +27,7 @@ def run_helper():
 
 
 if __name__ == "__main__":
-    run_database()
+    # run_crawling()
+    # run_database()
+    # run_helper()
+    isv_status_update()

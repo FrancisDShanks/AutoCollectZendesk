@@ -36,6 +36,7 @@ import time
 import os
 import re
 import shutil
+import xlrd
 
 
 class AutoZendeskHelper(object):
@@ -45,6 +46,30 @@ class AutoZendeskHelper(object):
         """
         self._save_path = os.path.abspath('.') + '\\'
         self._shared_folder = '\\\\192.168.8.55\\ISV-Share\\FrancisDu\\sourcecode\\'
+        self._ISV_POSTS_LIST_PATH = r'D:\workspace_Francis_Du\PycharmProjects\zendesk\ISV SDK Support_Posts List.xlsx'
+
+    def read_xlsx(self):
+        workbook = xlrd.open_workbook(self._ISV_POSTS_LIST_PATH)
+        book_sheet = workbook.sheet_by_name('OXPdNetJava Posts')
+        p = list()
+
+        for row in range(book_sheet.nrows):
+            row_data = []
+            for col in range(book_sheet.ncols):
+                cel = book_sheet.cell(row, col)
+                try:
+                    val = cel.value
+                    val = re.sub(r'\s+', '', val)
+                except:
+                    pass
+
+                if type(val) == float:
+                    val = int(val)
+                else:
+                    val = str(val)
+                row_data.append(val)
+            p.append([row_data[0][1:], row_data[4]])
+        return p
 
     def _remove_json_posts_files(self):
         """

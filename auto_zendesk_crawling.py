@@ -65,7 +65,7 @@ class AutoZendeskCrawling(object):
         self._zendesk_main_page = r'https://jetadvantage.zendesk.com/hc/en-us'
 
         # this parameter determine how may days(latest days) of data to collect
-        self._LATEST_DAYS_DATA_TO_COLLECT = 10
+        self._LATEST_DAYS_DATA_TO_COLLECT = 5
 
         self._posts_id = []
         self._json_posts_filename_list = []

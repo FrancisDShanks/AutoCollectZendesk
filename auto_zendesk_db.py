@@ -499,7 +499,8 @@ class AutoZendeskDB(object):
         updated_at_str varchar, 
         vote_count integer, 
         comment_count integer, 
-        follower_count integer
+        follower_count integer,
+        isv_status VARCHAR
         );
         """
                     )
@@ -572,7 +573,29 @@ class AutoZendeskDB(object):
                     str(post['id'])
                 ))
             else:
-                command = "INSERT INTO isv_posts VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);"
+                command = """
+                          INSERT INTO isv_posts(
+                                    id, 
+                                    url, 
+                                    title, 
+                                    closed, 
+                                    pinned, 
+                                    status, 
+                                    details, 
+                                    featured, 
+                                    html_url, 
+                                    topic_id, 
+                                    vote_sum, 
+                                    author_id, 
+                                    created_at_timestamp,
+                                    created_at_str, 
+                                    updated_at_timestamp,
+                                    updated_at_str, 
+                                    vote_count, 
+                                    comment_count, 
+                                    follower_count
+                          )                           
+                          VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);"""
                 cur.execute(command, (str(post['id']),
                                       post['url'],
                                       post['title'],
@@ -851,6 +874,25 @@ class AutoZendeskDB(object):
         self._postgresql_conn.commit()
         cur.close()
         print("table isv_update updated")
+
+    def update_isv_status(self, data):
+        """
+
+        :param data:
+        :return:
+        """
+        self._connect_postgresql()
+        cur = self._postgresql_conn.cursor()
+
+        for record in data:
+            if re.match('^[0-9]+', record[0]):
+                command = "UPDATE isv_posts SET isv_status = %s WHERE id = %s"
+                cur.execute(command, (str(record[1]), str(record[0])))
+
+        self._postgresql_conn.commit()
+        cur.close()
+        self._disconnect_postgresql()
+        print("isv_status in isv_posts updated")
 
     def run_all(self):
         self._connect_postgresql()
