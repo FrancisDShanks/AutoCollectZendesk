@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
+#  -*- coding: utf-8 -*-
 """
 Copyright 2018 Francis Xufan Du - BEYONDSOFT INC.
 
@@ -19,7 +19,8 @@ Created on Thu Jan 18 14:06:16 2018
 
 @author: Francis Xufan Du - BEYONDSOFT INC.
 @email: duxufan@beyondsoft.com xufan.du@gmail.com
-@Version: 	03/2018 0.6-Beta:   1. update the tool to only collect the necessary data
+@Version: 	03/2018 0.6.5-Beta add isv_status in database table isv_posts, to record post status marked by isv team
+            03/2018 0.6-Beta:   1. update the tool to only collect the necessary data
                                 2. change database updating logic (old way: delete all and re-create new table,
                                 new way: update or insert)
                                 3. fix bugs

@@ -19,7 +19,8 @@ Created on Thu Jan 18 14:06:16 2018
 
 @author: Francis Xufan Du - BEYONDSOFT INC.
 @email: duxufan@beyondsoft.com xufan.du@gmail.com
-@Version: 	03/2018 0.6-Beta:   1. update the tool to only collect the necessary data
+@Version: 	03/2018 0.6.5-Beta add isv_status in database table isv_posts, to record post status marked by isv team
+            03/2018 0.6-Beta:   1. update the tool to only collect the necessary data
                                 2. change database updating logic (old way: delete all and re-create new table,
                                 new way: update or insert)
                                 3. fix bugs
@@ -877,8 +878,8 @@ class AutoZendeskDB(object):
 
     def update_isv_status(self, data):
         """
-
-        :param data:
+        update the isv_status column in isv_posts.
+        :param data: a list contains each item is [post id, isv_status]
         :return:
         """
         self._connect_postgresql()
@@ -893,6 +894,54 @@ class AutoZendeskDB(object):
         cur.close()
         self._disconnect_postgresql()
         print("isv_status in isv_posts updated")
+
+    def get_isv_posts_data_for_processing(self):
+        self._connect_postgresql()
+        cur = self._postgresql_conn.cursor()
+
+        command = "SELECT id,isv_status,topic_id,created_at_str FROM isv_posts"
+        cur.execute(command)
+        data = cur.fetchall()
+
+        cur.close()
+        self._disconnect_postgresql()
+        return data
+
+    def get_isv_topics_data(self):
+        self._connect_postgresql()
+        cur = self._postgresql_conn.cursor()
+
+        command = "SELECT * FROM isv_topics"
+        cur.execute(command)
+        data = cur.fetchall()
+
+        cur.close()
+        self._disconnect_postgresql()
+        return data
+
+    def get_isv_posts_data(self, keys):
+        """
+        fetch desire data from isv_posts.
+        :param keys: a list of string contain column(s) want to fetch.
+                        eg1. keys = ['*']  to fetch all data
+                        eg2. keys = ['id', 'topic_id', 'isv_status'] to fetch these three columns
+        :return: data fetched from database.
+        """
+        self._connect_postgresql()
+        cur = self._postgresql_conn.cursor()
+
+        commend_key = ','.join(keys)
+        command = "SELECT {0} FROM isv_posts".format(commend_key)
+
+        try:
+            cur.execute(command)
+            data = cur.fetchall()
+        except psycopg2.ProgrammingError as info:
+            print(info)
+            quit()
+
+        return data
+
 
     def run_all(self):
         self._connect_postgresql()
