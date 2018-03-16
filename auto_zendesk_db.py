@@ -35,7 +35,7 @@ Created on Thu Jan 18 14:06:16 2018
 # core mods
 import os
 import json
-import xlwt
+import xlwt as xlwt
 import time
 import re
 
@@ -765,10 +765,9 @@ class AutoZendeskDB(object):
         """
         build Excel report file from collected json files
         """
-        wb = xlwt.Workbook()
-        ws = wb.add_sheet('All Posts')
         row_cnt = 0
-
+        workbook = xlwt.Workbook()
+        ws = workbook.add_sheet("All posts")
         cur = self._postgresql_conn.cursor()
         try:
             cur.execute("select jdoc from isv_posts_json")
@@ -797,17 +796,17 @@ class AutoZendeskDB(object):
 
                 ws.write(row_cnt, count, str(post[key]))
                 count += 1
-        wb.save(self._build_excel_filename('posts'))
         cur.close()
+        workbook.save(self._build_excel_filename('posts'))
         print("build post excel")
 
     def build_comments_excel_from_db(self):
         """
         build Excel report file from collected json files
         """
-        wb = xlwt.Workbook()
-        ws = wb.add_sheet('All comments')
         row_cnt = 0
+        workbook = xlwt.Workbook()
+        ws = workbook.add_sheet("All comments")
 
         cur = self._postgresql_conn.cursor()
         try:
@@ -837,9 +836,58 @@ class AutoZendeskDB(object):
 
                 ws.write(row_cnt, count, str(comment[key]))
                 count += 1
-        wb.save(self._build_excel_filename('comments'))
-        cur.close()
         print("built comments excel")
+        workbook.save(self._build_excel_filename('comments'))
+        cur.close()
+
+    def build_users_excel_from_db(self):
+        """
+        build Excel report file from collected json files
+        """
+        row_cnt = 0
+
+        cur = self._postgresql_conn.cursor()
+        try:
+            cur.execute("select id, name, email, created_at, role from isv_users")
+        except Exception:
+            print("Error, check if table isv_users exists")
+        workbook = xlwt.Workbook()
+        ws = workbook.add_sheet("Users")
+        users = cur.fetchall()
+        for user in users:
+            if not row_cnt:
+                ws.write(0, 0, 'id')
+                ws.write(0, 1, 'name')
+                ws.write(0, 2, 'email')
+                ws.write(0, 3, 'created_at')
+                ws.write(0, 4, 'role')
+
+            row_cnt += 1
+            ws.write(row_cnt, 0, user[0])
+            ws.write(row_cnt, 1, user[1])
+            ws.write(row_cnt, 2, user[2])
+            ws.write(row_cnt, 3, user[3])
+            ws.write(row_cnt, 4, user[4])
+        print("built users excel")
+        workbook.save(self._build_excel_filename('user'))
+        cur.close()
+
+    def build_excel(self):
+        workbook = xlwt.Workbook()
+        ws1 = workbook.add_sheet("Posts")
+        ws2 = workbook.add_sheet('Comments')
+        ws3 = workbook.add_sheet('Users')
+
+        self._connect_postgresql()
+
+        self.build_posts_excel_from_db(ws1)
+        self.build_comments_excel_from_db(ws2)
+        self.build_users_excel_from_db(ws3)
+
+        self._disconnect_postgresql()
+
+        workbook.save(self._build_excel_filename('zendesk'))
+
 
     def _build_update_record(self):
         """
@@ -949,13 +997,13 @@ class AutoZendeskDB(object):
         self._build_posts_postgresql()
         self._initial_comments_postgresql()
         self._build_comments_postgresql()
-
-        self.build_posts_excel_from_db()
-        self.build_comments_excel_from_db()
-
         self._build_topics_postgresql()
         self._build_users_postgresql()
         self._build_update_record()
+
+        self.build_posts_excel_from_db()
+        self.build_comments_excel_from_db()
+        self.build_users_excel_from_db()
         self._disconnect_postgresql()
 
     def test(self):

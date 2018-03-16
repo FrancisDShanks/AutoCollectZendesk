@@ -130,6 +130,7 @@ def bar_chart_pyplot():
             data_classes[key] += 1
         else:
             data_classes[key] = 1
+        total += 1
 
     labels = list()
     for key in data_classes.keys():
@@ -141,7 +142,7 @@ def bar_chart_pyplot():
     for o in labels:
         y_pos.append(data_classes[o])
 
-    # plt.figure(figsize=(9, 9))
+    plt.figure(figsize=(6, 7))
     width = 1
 
     plt.bar(x_pos, y_pos, width, align='center', alpha=0.5)

@@ -137,17 +137,23 @@ class AutoZendeskHelper(object):
         if len(day) < 2:
             day = '0' + day
 
-        post_name = '_'.join((str(year), str(month), str(day)))
-        post_name = ''.join(('posts_', post_name, '.xls'))
-        com_name = '_'.join((str(year), str(month), str(day)))
-        com_name = ''.join(('comments_', com_name, '.xls'))
+        t = '_'.join((str(year), str(month), str(day)))
+        post_name = ''.join(('posts_', t, '.xls'))
+        com_name = ''.join(('comments_', t, '.xls'))
+        user_name = ''.join(('user_', t, '.xls'))
 
         shutil.copyfile(self._save_path + post_name, des1 + post_name)
         shutil.copyfile(self._save_path + post_name, des2 + post_name)
+
         shutil.copyfile(self._save_path + com_name, des1 + com_name)
         shutil.copyfile(self._save_path + com_name, des2 + com_name)
+
+        shutil.copyfile(self._save_path + user_name, des1 + user_name)
+        shutil.copyfile(self._save_path + user_name, des2 + user_name)
+
         os.remove(self._save_path + post_name)
         os.remove(self._save_path + com_name)
+        os.remove(self._save_path + user_name)
 
     def run_remove_json_files(self):
         self._remove_json_posts_files()
