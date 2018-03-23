@@ -51,25 +51,24 @@ class AutoZendeskHelper(object):
 
     def read_xlsx(self):
         workbook = xlrd.open_workbook(self._ISV_POSTS_LIST_PATH)
-        book_sheet = workbook.sheet_by_name('OXPdNetJava Posts')
+        book_sheet = workbook.sheets()
         p = list()
-
-        for row in range(book_sheet.nrows):
-            row_data = []
-            for col in range(book_sheet.ncols):
-                cel = book_sheet.cell(row, col)
-                try:
-                    val = cel.value
-                    val = re.sub(r'\s+', '', val)
-                except:
-                    pass
-
-                if type(val) == float:
-                    val = int(val)
-                else:
-                    val = str(val)
-                row_data.append(val)
-            p.append([row_data[0][1:], row_data[4]])
+        for sheet in book_sheet:
+            for row in range(sheet.nrows):
+                row_data = []
+                # for col in range(sheet.ncols):
+                for col in [0, 4]:  # only need column 0 and column 4
+                    cel = sheet.cell(row, col)
+                    try:
+                        val = cel.value
+                        val = re.sub(r'\s+', '', val)
+                    except:
+                        print('load cell value error')
+                        quit()
+                    row_data.append(val)
+                # don't save Title rows
+                if re.match('^#[0-9]+$', row_data[0]):
+                    p.append([row_data[0][1:], row_data[1]])
         return p
 
     def _remove_json_posts_files(self):
