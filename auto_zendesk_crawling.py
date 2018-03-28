@@ -19,7 +19,8 @@ Created on Thu Jan 18 14:06:16 2018
 
 @author: Francis Xufan Du - BEYONDSOFT INC.
 @email: duxufan@beyondsoft.com xufan.du@gmail.com
-@Version: 	03/2018 0.6.5-Beta add isv_status in database table isv_posts, to record post status marked by isv team
+@Version: 	03/2018 0.7-Beta    add auto_zendesk_report.py module to generate reports based on MarkDown
+            03/2018 0.6.5-Beta add isv_status in database table isv_posts, to record post status marked by isv team
             03/2018 0.6-Beta:   1. update the tool to only collect the necessary data
                                 2. change database updating logic (old way: delete all and re-create new table,
                                 new way: update or insert)
@@ -29,7 +30,6 @@ Created on Thu Jan 18 14:06:16 2018
             02/2018 0.3-Beta: add users and topics data collecting
             01/2018 0.2-Beta: add database storage
             01/2018 0.1-Beta: build zendesk auto collect function
-
 """
 
 # core mods
@@ -67,6 +67,10 @@ class AutoZendeskCrawling(object):
 
         # this parameter determine how may days(latest days) of data to collect
         self._LATEST_DAYS_DATA_TO_COLLECT = 5
+
+        # sleep some seconds after logged in zendesk to wait the page full loaded to browswe
+        # when having a bad network connection
+        self._SLEEP_AFTER_LOG_IN = 5
 
         self._posts_id = []
         self._json_posts_filename_list = []
@@ -106,7 +110,7 @@ class AutoZendeskCrawling(object):
                         c_time = datetime.datetime.now()
                         days = (c_time - update_time).days
 
-                        # only collects those posts' comments which has been updated in 15 days
+                        # only collects those posts' comments which has been updated in n days
                         if days < self._LATEST_DAYS_DATA_TO_COLLECT:
                             # print(post['id'], update_time)
                             # print(days)
@@ -155,8 +159,8 @@ class AutoZendeskCrawling(object):
         search_box.send_keys(self._passwd)
         search_box.submit()
         self._browser.get(self._zendesk_main_page)
-        # set-up a 15 seconds idle time to let the page fully loaded(because of the bad network in the office)
-        time.sleep(15)
+        # set-up some seconds idle time to let the page fully loaded(because of the bad network in the office)
+        time.sleep(self._SLEEP_AFTER_LOG_IN)
 
     def _logout_zendesk(self):
         """

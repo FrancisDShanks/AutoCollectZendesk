@@ -19,7 +19,8 @@ Created on Thu Jan 18 14:06:16 2018
 
 @author: Francis Xufan Du - BEYONDSOFT INC.
 @email: duxufan@beyondsoft.com xufan.du@gmail.com
-@Version: 	03/2018 0.6.5-Beta add isv_status in database table isv_posts, to record post status marked by isv team
+@Version: 	03/2018 0.7-Beta    add auto_zendesk_report.py module to generate reports based on MarkDown
+            03/2018 0.6.5-Beta add isv_status in database table isv_posts, to record post status marked by isv team
             03/2018 0.6-Beta:   1. update the tool to only collect the necessary data
                                 2. change database updating logic (old way: delete all and re-create new table,
                                 new way: update or insert)
@@ -29,7 +30,6 @@ Created on Thu Jan 18 14:06:16 2018
             02/2018 0.3-Beta: add users and topics data collecting
             01/2018 0.2-Beta: add database storage
             01/2018 0.1-Beta: build zendesk auto collect function
-
 """
 
 # core mods
@@ -37,6 +37,7 @@ import os
 import json
 import xlwt as xlwt
 import time
+import datetime
 import re
 
 # 3rd party mods
@@ -71,6 +72,12 @@ class AutoZendeskDB(object):
         self._json_comments_filename_list = []
         self._json_users_filename_list = []
 
+        self._connect_postgresql()
+
+    def __del__(self):
+        self._disconnect_postgresql()
+        super()
+
     def _connect_postgresql(self):
         """
         connect to postgresql database.
@@ -98,7 +105,7 @@ class AutoZendeskDB(object):
         drop all posts and comments tables in database
         :return: None
         """
-        self._connect_postgresql()
+
         cur = self._postgresql_conn.cursor()
         cur.execute("DROP TABLE IF EXISTS isv_posts;")
 
@@ -106,7 +113,6 @@ class AutoZendeskDB(object):
         cur.execute("DROP TABLE IF EXISTS isv_comments_json;")
         self._postgresql_conn.commit()
         cur.close()
-        self._disconnect_postgresql()
 
     def _initial_posts_postgresql(self):
         """
@@ -878,13 +884,11 @@ class AutoZendeskDB(object):
         ws2 = workbook.add_sheet('Comments')
         ws3 = workbook.add_sheet('Users')
 
-        self._connect_postgresql()
+
 
         self.build_posts_excel_from_db(ws1)
         self.build_comments_excel_from_db(ws2)
         self.build_users_excel_from_db(ws3)
-
-        self._disconnect_postgresql()
 
         workbook.save(self._build_excel_filename('zendesk'))
 
@@ -930,7 +934,7 @@ class AutoZendeskDB(object):
         :param data: a list contains each item is [post id, isv_status]
         :return:
         """
-        self._connect_postgresql()
+
         cur = self._postgresql_conn.cursor()
 
         for record in data:
@@ -940,11 +944,10 @@ class AutoZendeskDB(object):
 
         self._postgresql_conn.commit()
         cur.close()
-        self._disconnect_postgresql()
         print("isv_status in isv_posts updated")
 
     def get_isv_posts_data_for_processing(self):
-        self._connect_postgresql()
+
         cur = self._postgresql_conn.cursor()
 
         command = "SELECT id,isv_status,topic_id,created_at_str FROM isv_posts"
@@ -952,22 +955,25 @@ class AutoZendeskDB(object):
         data = cur.fetchall()
 
         cur.close()
-        self._disconnect_postgresql()
         return data
 
-    def get_isv_topics_data(self):
-        self._connect_postgresql()
+    def get_isv_topics_data(self, keys=['*']):
         cur = self._postgresql_conn.cursor()
 
-        command = "SELECT * FROM isv_topics"
-        cur.execute(command)
-        data = cur.fetchall()
+        commend_key = ','.join(keys)
+        command = "SELECT {0} FROM isv_topics".format(commend_key)
+
+        try:
+            cur.execute(command)
+            data = cur.fetchall()
+        except psycopg2.ProgrammingError as info:
+            print(info)
+            quit()
 
         cur.close()
-        self._disconnect_postgresql()
         return data
 
-    def get_isv_posts_data(self, keys):
+    def get_isv_posts_data(self, keys=['*']):
         """
         fetch desire data from isv_posts.
         :param keys: a list of string contain column(s) want to fetch.
@@ -975,7 +981,6 @@ class AutoZendeskDB(object):
                         eg2. keys = ['id', 'topic_id', 'isv_status'] to fetch these three columns
         :return: data fetched from database.
         """
-        self._connect_postgresql()
         cur = self._postgresql_conn.cursor()
 
         commend_key = ','.join(keys)
@@ -987,12 +992,80 @@ class AutoZendeskDB(object):
         except psycopg2.ProgrammingError as info:
             print(info)
             quit()
+        return data
+
+    def get_isv_comments_data(self, keys=['*'], where=''):
+        """
+        fetch desire data from isv_comments.
+        :param keys: a list of string contain column(s) want to fetch.
+                        eg1. keys = ['*']  to fetch all data
+                        eg2. keys = ['id', 'post_id', 'author_id'] to fetch these three columns
+        :param where: contain where string
+        :return: data fetched from database.
+        # TODO: there is a problem what when running this function with parameter '*'.
+        # Because there are too many comments and some comments contain image within detail,
+        # so the result of this function may exceed some kind of limit,
+        # so the return of this function may not be fully printable, thus only part of the result can be printed.
+        """
+        cur = self._postgresql_conn.cursor()
+
+        commend_key = ','.join(keys)
+        command = "SELECT {0} FROM isv_comments".format(commend_key)
+        command += where
+
+        try:
+            cur.execute(command)
+            data = cur.fetchall()
+        except psycopg2.ProgrammingError as info:
+            print(info)
+            quit()
 
         return data
 
+    def get_isv_users_data(self, keys=['*']):
+        """
+        fetch desire data from isv_users.
+        :param keys: a list of string contain column(s) want to fetch.
+                        eg1. keys = ['*']  to fetch all data
+                        eg2. keys = ['id', 'role'] to fetch these columns
+        :return: data fetched from database.
+        """
+        cur = self._postgresql_conn.cursor()
+
+        commend_key = ','.join(keys)
+        command = "SELECT {0} FROM isv_users".format(commend_key)
+
+        try:
+            cur.execute(command)
+            data = cur.fetchall()
+        except psycopg2.ProgrammingError as info:
+            print(info)
+            quit()
+        return data
+
+    def get_isv_support_data(self, keys=['*']):
+        """
+        fetch desire data from isv_support.
+        :param keys: a list of string contain column(s) want to fetch.
+                        eg1. keys = ['*']  to fetch all data
+                        eg2. keys = ['id', 'name'] to fetch these columns
+        :return: data fetched from database.
+        """
+        cur = self._postgresql_conn.cursor()
+
+        commend_key = ','.join(keys)
+        command = "SELECT {0} FROM isv_support".format(commend_key)
+
+        try:
+            cur.execute(command)
+            data = cur.fetchall()
+        except psycopg2.ProgrammingError as info:
+            print(info)
+            quit()
+        return data
 
     def run_all(self):
-        self._connect_postgresql()
+
         self._initial_posts_postgresql()
         self._build_posts_postgresql()
         self._initial_comments_postgresql()
@@ -1004,7 +1077,85 @@ class AutoZendeskDB(object):
         self.build_posts_excel_from_db()
         self.build_comments_excel_from_db()
         self.build_users_excel_from_db()
-        self._disconnect_postgresql()
 
-    def test(self):
-        self._build_json_users_file_list()
+    def fifteen_days(self):
+        cur = self._postgresql_conn.cursor()
+
+        # sql query for posts. Not using dynamic sql construction considering SQL INJECTION SECURITY CONCERN
+        command = "SELECT id,html_url,title,topic_id,author_id,updated_at_str,isv_status from isv_posts "
+        command += "WHERE isv_status in ('ExternalPending', 'InternalPending', 'Ongoingwork', 'PartnerPending', 'Open')"
+        cur.execute(command)
+        data_p = cur.fetchall()
+
+        # build posts dict with post_id as key, fetched data as value
+        posts = dict()
+        for d in data_p:
+            posts[d[0]] = list(d[1:])
+
+        # selector for comments sql query
+        post_id = ['\'' + i + '\'' for i in posts.keys()]
+        selector = ','.join(post_id)
+        selector = '(' + selector + ')'
+        # print(selector)
+
+        # sql query for comments
+        command = "SELECT id,post_id,author_id,updated_at_str from isv_comments "
+        command = ''.join([command, "WHERE post_id in ", selector])
+        cur.execute(command)
+        data_c = cur.fetchall()
+
+        # sql query for supporters and topics
+        data_s = self.get_isv_support_data()
+        data_t = self.get_isv_topics_data()
+
+        # topic dict
+        topics = dict()
+        for t in data_t:
+            topics[t[0]] = list(t[1:])
+
+        # build a dict of ISV supporters
+        supporters = {}
+        for s in data_s:
+            supporters[s[0]] = s[1]
+
+        # change data_c data structure from tuple to list
+        data_c = [list(c) for c in data_c]
+
+        # replace author_id in comments to supporter name if id is a supporter
+        for comment in data_c:
+            if comment[2] in supporters.keys():
+                comment[2] = supporters[comment[2]]
+            else:
+                comment[2] = 'Partner'
+
+        # build a post dict based on fetched data
+        # key is post id
+        # value is the latest response comment
+        comments = dict()
+        for comment in data_c:
+            if comment[1] in comments.keys():
+                if comments[comment[1]][3] < comment[3]:
+                    comments[comment[1]] = comment
+            else:
+                comments[comment[1]] = comment
+
+        res = []
+        for key in comments.keys():
+            d1 = datetime.datetime.strptime(comments[key][3][0:10], '%Y-%m-%d')
+            d2 = datetime.datetime.today()
+            day = (d2.date() - d1.date()).days
+            topic = topics[posts[key][2]][2]
+            last_res = comments[key][2]
+            post_title = posts[key][1]
+            post_status = posts[key][5]
+            res.append([key, post_title, topic, post_status, day, last_res])
+        # print(res)
+        return res
+
+    def markdown(self):
+        data = self.fifteen_days()
+        return data
+
+
+
+

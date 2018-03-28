@@ -19,7 +19,8 @@ Created on Thu Jan 18 14:06:16 2018
 
 @author: Francis Xufan Du - BEYONDSOFT INC.
 @email: duxufan@beyondsoft.com xufan.du@gmail.com
-@Version: 	03/2018 0.6.5-Beta add isv_status in database table isv_posts, to record post status marked by isv team
+@Version: 	03/2018 0.7-Beta    add auto_zendesk_report.py module to generate reports based on MarkDown
+            03/2018 0.6.5-Beta add isv_status in database table isv_posts, to record post status marked by isv team
             03/2018 0.6-Beta:   1. update the tool to only collect the necessary data
                                 2. change database updating logic (old way: delete all and re-create new table,
                                 new way: update or insert)
@@ -29,7 +30,6 @@ Created on Thu Jan 18 14:06:16 2018
             02/2018 0.3-Beta: add users and topics data collecting
             01/2018 0.2-Beta: add database storage
             01/2018 0.1-Beta: build zendesk auto collect function
-
 """
 
 # core mods

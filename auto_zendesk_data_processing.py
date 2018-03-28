@@ -19,7 +19,8 @@ Created on Thu Jan 18 14:06:16 2018
 
 @author: Francis Xufan Du - BEYONDSOFT INC.
 @email: duxufan@beyondsoft.com xufan.du@gmail.com
-@Version: 	03/2018 0.6.5-Beta add isv_status in database table isv_posts, to record post status marked by isv team
+@Version: 	03/2018 0.7-Beta    add auto_zendesk_report.py module to generate reports based on MarkDown
+            03/2018 0.6.5-Beta add isv_status in database table isv_posts, to record post status marked by isv team
             03/2018 0.6-Beta:   1. update the tool to only collect the necessary data
                                 2. change database updating logic (old way: delete all and re-create new table,
                                 new way: update or insert)
@@ -33,14 +34,13 @@ Created on Thu Jan 18 14:06:16 2018
 
 import re
 
-
-import seaborn
 import matplotlib.pyplot as plt
 import numpy
 import pygal
 
 import auto_zendesk_db
 import auto_zendesk_helper
+
 
 
 def pie_chart_pygal():
@@ -146,7 +146,7 @@ def bar_chart_pyplot():
     width = 1
 
     plt.bar(x_pos, y_pos, width, align='center', alpha=0.5)
-    plt.xticks(x_pos, labels, rotation=-10, fontsize=8)
+    plt.xticks(x_pos, labels, rotation=-90, fontsize=8)
     # plt.xlabel('Topics')
     plt.ylabel('Number of Tickets')
     plt.title('Number of Tickets of Topics', bbox={'facecolor': '0.8', 'pad': 5})
@@ -194,3 +194,5 @@ def time_bar_chart_pyplot():
         plt.text(x, y+0.5, '%.0f' % y, ha='center', va='bottom', fontsize=8)
     plt.savefig("time_bar.png")
     plt.show()
+
+
