@@ -31,51 +31,75 @@ Created on Thu Jan 18 14:06:16 2018
             01/2018 0.2-Beta: add database storage
             01/2018 0.1-Beta: build zendesk auto collect function
 """
-import auto_zendesk_data_processing
-import auto_zendesk_db
+
+import src.auto_zendesk_data_processing as data_processing
+import src.auto_zendesk_db as db
 import datetime
 
 
-def run_vitualization():
-    auto_zendesk_data_processing.pie_chart_pyplot()
-    auto_zendesk_data_processing.bar_chart_pyplot()
-    auto_zendesk_data_processing.time_bar_chart_pyplot()
+def run_visualization():
+    data_processing.pie_chart_pyplot()
+    data_processing.bar_chart_pyplot()
+    data_processing.time_bar_chart_pyplot()
 
 
-def mardown_report_filename():
-    filename = 'markdown_report_'
+def report_filename(extents):
+    if extents == 'md':
+        filename = 'markdown_report_'
+    else:
+        filename = 'html_report_'
     date = str(datetime.date.today())
-    extents = '.md'
+    extents = '.' + extents
     return filename + date + extents
 
 
-def build_chart():
-    d = auto_zendesk_db.AutoZendeskDB("isv_zendesk", "postgres", "Dxf3529!", "127.0.0.1", "5432")
+def get_data_from_db():
+    d = db.AutoZendeskDB("isv_zendesk", "postgres", "Dxf3529!", "127.0.0.1", "5432")
+    return d.report_data()
 
-    data = d.markdown()
-    res = '<tr>'
-    res += '<th>Post ID</th>'
-    res += '<th>Post Title</th>'
-    res += '<th>Topic</th>'
-    res += '<th>Post Status</th>'
-    res += '<th>Days From Last Response</th>'
-    res += '<th>Last Responder</th>'
-    res += '</tr>'
+
+def build_chart3(data):
+    res3 = '<tr>'
+    res3 += '<th>Post ID</th>'
+    res3 += '<th>Post Title</th>'
+    res3 += '<th>Topic</th>'
+    res3 += '<th>Post Status</th>'
+    res3 += '<th>Days From Last Response</th>'
+    res3 += '<th>Last Responder</th>'
+    res3 += '</tr>'
+    res2 = res3
+    cnt3 = 0
+    cnt2 = 0
     for row in data:
-        res += '<tr>'
-        for col_n in range(len(row)):
-            res += '<td>'
-            if col_n == 0:
-                res += '#'
-            res += str(row[col_n])
+        if row[4] <= 1:
+            res2 += '<tr>'
+            cnt2 += 1
+            for col_n in range(len(row)):
+                res2 += '<td>'
+                if col_n == 0:
+                    res2 += '#'
+                res2 += str(row[col_n])
 
-            res += '</td>'
-        res += '</tr>'
-    res = '<table border ="1">' + res + '</table>'
-    return res, len(data), data
+                res2 += '</td>'
+            res2 += '</tr>'
+        else:
+
+            res3 += '<tr>'
+            cnt3 += 1
+            for col_n in range(len(row)):
+                res3 += '<td>'
+                if col_n == 0:
+                    res3 += '#'
+                res3 += str(row[col_n])
+
+                res3 += '</td>'
+            res3 += '</tr>'
+    res3 = '<table border ="1">' + res3 + '</table>'
+    res2 = '<table border ="1">' + res2 + '</table>'
+    return res2, cnt2, res3, cnt3
 
 
-def reports_tables(data):
+def build_chart4(data):
     res4 = '<tr>'
     res4 += '<th>Post ID</th>'
     res4 += '<th>Post Title</th>'
@@ -117,7 +141,8 @@ def reports_tables(data):
 
 def build_markdown_report():
     enter = '\n'
-    with open(mardown_report_filename(), 'w', newline=enter) as file:
+    data = get_data_from_db()
+    with open(report_filename('md'), 'w', newline=enter) as file:
         file.write("Hello Scott," + enter + enter)
         file.write("Here is the Report of the ISV SDK Support status." + enter)
         file.write("### 0. Priority Escalations:" + enter)
@@ -127,19 +152,23 @@ def build_markdown_report():
         file.write("*Current New (no initial response) Posts*" + enter + enter)
         file.write("*Note: Team is performing internal discussion on this issue and decide how to response to partner.*"
                    + enter)
-        file.write("### 2. Post handled: 5" + enter)
-        file.write("*Posts looked at / responded to in last 24 hours*" + enter)
 
-        [chart, cnt, data] = build_chart()
-        file.write("### 3. Posts No Response: " + str(cnt) + enter)
+        [chart2, cnt2, chart3, cnt3] = build_chart3(data)
+        file.write("### 2. Post handled: " + str(cnt2) + enter)
+        file.write("*Posts looked at / responded to in last 24 hours*" + enter)
+        file.write(enter + chart2 + enter + enter)
+
+
+
+        file.write("### 3. Posts No Response: " + str(cnt3) + enter)
         file.write("*Current Open Posts that have no response within 24 hours*" + enter)
-        file.write(enter + chart + enter + enter)
+        file.write(enter + chart3 + enter + enter)
         file.write("These Posts are currently Open or being worked on, but without responding within in 24 hours. "
                    "We will look into these and take action accordingly.  " + enter)
         file.write("*We are looking into and trying to clean up the post that without no response/update for more than "
                    "15 days. (some of them are very old and has no update for months)*" + enter)
 
-        [chart4, cnt4, chart5, cnt5] = reports_tables(data)
+        [chart4, cnt4, chart5, cnt5] = build_chart4(data)
         file.write("### 4. Internal & External Pending Posts: " + str(cnt4) + enter)
         file.write("*Posts waiting on internal external response (waiting for FW, RDL, SDK, etc...)*" + enter)
         file.write(enter + chart4 + enter + enter)
@@ -155,7 +184,7 @@ def build_markdown_report():
         file.write("![img](pie.png)" + enter + enter)
         file.write("![img](bar.png)" + enter + enter)
         file.write("![img](time_bar.png)" + enter + enter)
-        file.write("![img](pie_chart.svg)" + enter + enter)
+        # file.write("![img](pie_chart.svg)" + enter + enter)
 
         file.write("Notes:" + enter)
         file.write('   1.    "Closed" are the posts with Closed status or marked as Answered.' + enter)
@@ -175,6 +204,90 @@ def build_markdown_report():
         file.write("Best Regards" + enter + enter)
         file.write("Denon" + enter + enter)
         file.write("Beyondsoft Corporation" + enter)
+
+def get_header_css():
+    res = """
+    <!doctype html>
+    <html>
+    <head>
+    <meta charset='UTF-8'><meta name='viewport' content='width=device-width initial-scale=1'>
+    <title>markdown_report_2018-03-30.md</title>
+    <link href='https://raw.githubusercontent.com/slashfoo/lmweb/master/style/latinmodern-mono-light.css' rel='stylesheet' type='text/css' />
+    <link href="isv.css" rel="stylesheet" type="text/css" />
+    </head>
+    """
+    return res
+
+def build_html_report():
+    enter = '<br/>'
+    data = get_data_from_db()
+    with open(report_filename('html'), 'w', newline='\n') as file:
+        file.write(get_header_css())
+        file.write("<body class='typora-export'><div id='write' class='is-node'>")
+        file.write("<p>Hello Scott,</p>")
+        file.write("<p>Here is the Report of the ISV SDK Support status.</p>")
+        file.write("<h3><a name='header-n4' class='md-header-anchor '></a>0. Priority Escalations:</h3>")
+        file.write("<p><em>This issue is not in Forum as a post, but handled through email directly.</em></p>")
+
+        file.write("<h3><a name='header-n7' class='md-header-anchor '></a>1. Current New Posts:</h3>")
+        file.write("<p><em>Current New (no initial response) Posts</em></p>")
+        file.write("<p><em>Note: Team is performing internal discussion on this issue and decide how to response "
+                   "to partner.</em></p>")
+
+        [chart2, cnt2, chart3, cnt3] = build_chart3(data)
+        file.write("<h3><a name='header-n12' class='md-header-anchor '></a>2. Post handled: " + str(cnt2) + "</h3>")
+        file.write("<p><em>Posts looked at / responded to in last 24 hours</em></p>")
+        file.write("<p>" + chart2 + "</p>")
+
+        file.write("<h3><a name='header-n18' class='md-header-anchor '></a>3. Posts No Response: "
+                   + str(cnt3) + "</h3>")
+        file.write("<p><em>Current Open Posts that have no response within 24 hours</em></p>")
+        file.write("<p>" + chart3 + "</p>")
+        file.write("<p>These Posts are currently Open or being worked on, but without responding within in 24 hours. "
+                   "We will look into these and take action accordingly.<br/>")
+        file.write("<em>We are looking into and trying to clean up the post that without no response/update \
+        for more than 15 days. (some of them are very old and has no update for months)</em></p>")
+
+        [chart4, cnt4, chart5, cnt5] = build_chart4(data)
+        file.write("<h3><a name='header-n24' class='md-header-anchor '></a>4. Internal & External Pending Posts: "
+                   + str(cnt4) + "</h3>")
+        file.write("<p><em>Posts waiting on internal external response (waiting for FW, RDL, SDK, etc...)</em></p>")
+        file.write("<p>" + chart4 + "</p>")
+
+        file.write("<h3><a name='header-n31' class='md-header-anchor '></a>5. Partner Pending Posts: "
+                   + str(cnt5) + "</h3>")
+        file.write("<p><em>Posts waiting on Partner Response</em></p>")
+        file.write(enter + chart5 + enter + enter)
+        file.write("<p>These posts are waiting for Partner's feedback on query about more info. "
+                   "Team will monitor and continue work once partner provided feedback.</p>")
+        file.write("<h3><a name='header-n37' class='md-header-anchor '></a>6. Overview of Posts from Forum</h3>")
+        file.write("<p><em>OXPd Pro and Samsung Printing SDK are not included. "
+                   "Status of Some of Posts are TBD which are still being reviewed.</em></p>")
+        file.write("<p><img src='pie.png' alt='img'/></p>")
+        file.write("<p><img src='bar.png' alt='img'/></p>")
+        file.write("<p><img src='time_bar.png' alt='img'/></p>")
+        # file.write("![img](pie_chart.svg)" + enter + enter)
+
+        file.write("<p>Notes:</p>")
+        file.write("<ol start=''>")
+        file.write('<li>"Closed" are the posts with Closed status or marked as Answered.</li>')
+        file.write('<li>"Solved" are the posts that we responded partner with a solution/workaround.</li>')
+        file.write('<li>"Open" are the posts that need further response from support team.</li>')
+        file.write('<li>"New" are the ones just created and no response made yet.</li>')
+        file.write('<li>"Ongoing Work"" are the ones that team are working on for a solution.</li>')
+        file.write('<li>"External pending" refers to post is waiting on feedback from other teams in HP '
+                   '(FW, RDL, SDK, etc.)</li>')
+        file.write('<li>"Internal Pending" refers to post is waiting on result of Support team.( Response '
+                   'is pending for approval, Internal discussion, Article/Documentation/Portal updates, etc.)</li>')
+        file.write('<li>"Partner Pending"" refers to posts that waiting on feedback from partner to continue.</li>')
+        file.write('<li>"Not a Support Ticket"  refers to posts that submitted by HP guys and mostly for '
+                   'discussion on some topics. Not from partners.</li></ol>')
+        file.write("<p>Please let us know if any comments on this report. Thanks.</p>")
+        file.write("<p>Best Regards</p>")
+        file.write("<p>Denon</p>")
+        file.write("<p>Beyondsoft Corporation</p>")
+        file.write("</div>")
+        file.write("</body></html>")
 
 
 def markdown_to_html():
@@ -206,11 +319,13 @@ def markdown_to_html():
                        )
     output_file.write(html)
 
+def run_report():
+    run_visualization()
+    build_markdown_report()
+    build_html_report()
 
 if __name__ == "__main__":
-    run_vitualization()
-    build_markdown_report()
-    markdown_to_html()
+    run_report()
 
 
 

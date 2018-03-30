@@ -38,8 +38,8 @@ import matplotlib.pyplot as plt
 import numpy
 import pygal
 
-import auto_zendesk_db
-import auto_zendesk_helper
+import src.auto_zendesk_db as auto_zendesk_db
+import src.auto_zendesk_helper as auto_zendesk_helper
 
 
 

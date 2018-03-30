@@ -35,7 +35,7 @@ Created on Thu Jan 18 14:06:16 2018
 # core mods
 import os
 import json
-import xlwt as xlwt
+import xlwt
 import time
 import datetime
 import re
@@ -1078,7 +1078,7 @@ class AutoZendeskDB(object):
         self.build_comments_excel_from_db()
         self.build_users_excel_from_db()
 
-    def fifteen_days(self):
+    def report_data(self):
         cur = self._postgresql_conn.cursor()
 
         # sql query for posts. Not using dynamic sql construction considering SQL INJECTION SECURITY CONCERN
@@ -1113,7 +1113,7 @@ class AutoZendeskDB(object):
         for t in data_t:
             topics[t[0]] = list(t[1:])
 
-        # build a dict of ISV supporters
+        # supporters dict
         supporters = {}
         for s in data_s:
             supporters[s[0]] = s[1]
@@ -1149,12 +1149,8 @@ class AutoZendeskDB(object):
             post_title = posts[key][1]
             post_status = posts[key][5]
             res.append([key, post_title, topic, post_status, day, last_res])
-        # print(res)
+        print(res)
         return res
-
-    def markdown(self):
-        data = self.fifteen_days()
-        return data
 
 
 
