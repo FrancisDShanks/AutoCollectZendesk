@@ -19,7 +19,8 @@ Created on Thu Jan 18 14:06:16 2018
 
 @author: Francis Xufan Du - BEYONDSOFT INC.
 @email: duxufan@beyondsoft.com xufan.du@gmail.com
-@Version: 	03/2018 0.7-Beta    add auto_zendesk_report.py module to generate reports based on MarkDown
+@Version: 	06/2018 0.8-Beta    add new auto crawler to use zendesk api instead of using browser(need zendesk agent)
+            03/2018 0.7-Beta    add auto_zendesk_report.py module to generate reports based on MarkDown
             03/2018 0.6.5-Beta add isv_status in database table isv_posts, to record post status marked by isv team
             03/2018 0.6-Beta:   1. update the tool to only collect the necessary data
                                 2. change database updating logic (old way: delete all and re-create new table,
@@ -38,16 +39,16 @@ import os
 import re
 import shutil
 import xlrd
-
+import configure
 
 class AutoZendeskHelper(object):
     def __init__(self):
         """
         initial method
         """
-        self._save_path = os.path.abspath('.') + '\\'
+        self._save_path = configure.OUTPUT_PATH
         self._shared_folder = '\\\\192.168.8.55\\ISV-Share\\FrancisDu\\sourcecode\\'
-        self._ISV_POSTS_LIST_PATH = r'D:\workspace_Francis_Du\PycharmProjects\zendesk\ISV SDK Support_Posts List.xlsx'
+        self._ISV_POSTS_LIST_PATH = os.path.join(configure.ROOT_PATH, 'ISV SDK Support_Posts List.xlsx')
 
     def read_xlsx(self):
         workbook = xlrd.open_workbook(self._ISV_POSTS_LIST_PATH)
@@ -99,15 +100,15 @@ class AutoZendeskHelper(object):
             for file in files:
                 if file[:3] == 'use':
                     os.remove(file)
-        if os.path.exists(self._save_path + 'topics.json'):
-            os.remove(self._save_path + 'topics.json')
+        if os.path.exists(os.path.join(self._save_path, 'topics.json')):
+            os.remove(os.path.join(self._save_path, 'topics.json'))
 
     def remove_all_json_files(self):
         for r in os.listdir(self._save_path):
-            if os.path.isfile(r):
+            if os.path.isfile(os.path.join(self._save_path, r)):
                 if re.match('^post.*.json', r) or re.match('^comment.*.json', r) or\
                         re.match('^user.*.json', r) or re.match('^topic.*.json', r):
-                    os.remove(r)
+                    os.remove(os.path.join(self._save_path, r))
 
     def move_json_from_shared_folder(self):
         for file in os.listdir(self._shared_folder):
@@ -125,7 +126,6 @@ class AutoZendeskHelper(object):
 
     def move_excel(self):
         des1 = 'D:\\workspace_Francis_Du\\PycharmProjects\\mysite\\static\\docs\\'
-        des2 = '\\\\192.168.8.55\\ISV-Share\\FrancisDu\\zendeskRecords\\'
 
         t = time.localtime()
         year = str(t.tm_year)
@@ -141,18 +141,15 @@ class AutoZendeskHelper(object):
         com_name = ''.join(('comments_', t, '.xls'))
         user_name = ''.join(('user_', t, '.xls'))
 
-        shutil.copyfile(self._save_path + post_name, des1 + post_name)
-        shutil.copyfile(self._save_path + post_name, des2 + post_name)
+        shutil.copyfile(os.path.join(self._save_path, post_name), des1 + post_name)
 
-        shutil.copyfile(self._save_path + com_name, des1 + com_name)
-        shutil.copyfile(self._save_path + com_name, des2 + com_name)
+        shutil.copyfile(os.path.join(self._save_path, com_name), des1 + com_name)
 
-        shutil.copyfile(self._save_path + user_name, des1 + user_name)
-        shutil.copyfile(self._save_path + user_name, des2 + user_name)
+        shutil.copyfile(os.path.join(self._save_path, user_name), des1 + user_name)
 
-        os.remove(self._save_path + post_name)
-        os.remove(self._save_path + com_name)
-        os.remove(self._save_path + user_name)
+        os.remove(os.path.join(self._save_path, post_name))
+        os.remove(os.path.join(self._save_path, com_name))
+        os.remove(os.path.join(self._save_path, user_name))
 
     def run_remove_json_files(self):
         self._remove_json_posts_files()

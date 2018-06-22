@@ -19,7 +19,8 @@ Created on Thu Jan 18 14:06:16 2018
 
 @author: Francis Xufan Du - BEYONDSOFT INC.
 @email: duxufan@beyondsoft.com xufan.du@gmail.com
-@Version: 	03/2018 0.7-Beta    add auto_zendesk_report.py module to generate reports based on MarkDown
+@Version: 	06/2018 0.8-Beta    add new auto crawler to use zendesk api instead of using browser(need zendesk agent)
+            03/2018 0.7-Beta    add auto_zendesk_report.py module to generate reports based on MarkDown
             03/2018 0.6.5-Beta add isv_status in database table isv_posts, to record post status marked by isv team
             03/2018 0.6-Beta:   1. update the tool to only collect the necessary data
                                 2. change database updating logic (old way: delete all and re-create new table,
@@ -43,6 +44,7 @@ import re
 # 3rd party mods
 import psycopg2
 import psycopg2.extras
+import configure
 
 
 class AutoZendeskDB(object):
@@ -55,7 +57,7 @@ class AutoZendeskDB(object):
         :param postgresql_host: database host
         :param postgresql_port: database port
         """
-        self._save_path = os.path.abspath('.') + '\\'
+        self._save_path = configure.OUTPUT_PATH
 
         # length limit of a excel cell
         self._EXCEL_MAXIMUM_CELL = 32767
@@ -159,19 +161,19 @@ class AutoZendeskDB(object):
         for root, dirs, files in os.walk(self._save_path):
             for file in files:
                 if re.match('^post.*.json', file):
-                    self._json_posts_filename_list.append(self._save_path + file)
+                    self._json_posts_filename_list.append(os.path.join(self._save_path, file))
 
     def _build_json_users_file_list(self):
         for root, dirs, files in os.walk(self._save_path):
             for file in files:
                 if re.match('^user.*.json', file):
-                    self._json_users_filename_list.append(self._save_path + file)
+                    self._json_users_filename_list.append(os.path.join(self._save_path, file))
 
     def _build_json_comments_file_list(self):
         for root, dirs, files in os.walk(self._save_path):
             for file in files:
                 if re.match('^comment.*.json', file):
-                    self._json_comments_filename_list.append(self._save_path + file)
+                    self._json_comments_filename_list.append(os.path.join(self._save_path, file))
 
         # for j in self._json_comments_filename_list:
             # print(j)
@@ -249,12 +251,12 @@ class AutoZendeskDB(object):
         """
                     )
         try:
-            data = self._load_json(self._save_path + r'topics.json')
+            data = self._load_json(os.path.join(self._save_path, 'topics.json'))
         except IOError:
-            print("ERROR: IO ERROR when load {0}".format(self._save_path + r'topics.json'))
+            print("ERROR: IO ERROR when load {0}".format(self._save_path + r'\topics.json'))
             quit()
         except json.JSONDecodeError:
-            print("ERROR: Json file {0} decode error!".format(self._save_path + r'topics.json'))
+            print("ERROR: Json file {0} decode error!".format(self._save_path + r'\topics.json'))
             quit()
 
         topics = data['topics']
@@ -377,7 +379,7 @@ class AutoZendeskDB(object):
             users = data['results']
             for user in users:
                 # TODO: why 3 tickets here?
-                if 'via' in user.keys():
+                if 'body' in user.keys():
                     continue
 
                 created_at = user['created_at']
@@ -392,6 +394,8 @@ class AutoZendeskDB(object):
 
                 cur.execute("SELECT * FROM isv_users WHERE id = %s;", (str(user['id']),))
                 result = cur.fetchall()
+                # TODO
+                print(user)
 
                 if result:
                     command = """UPDATE isv_users SET url = %s,
@@ -430,6 +434,7 @@ class AutoZendeskDB(object):
                     ))
                 else:
                     command = "INSERT INTO isv_users VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);"
+
                     cur.execute(command, (str(user['id']),
                                           user['url'],
                                           user['name'],
@@ -761,7 +766,7 @@ class AutoZendeskDB(object):
         :return: excel filename
         """
         local_time = time.strftime("_%Y_%m_%d", time.localtime(time.time()))
-        save_filename = self._save_path + data_type + local_time + '.xls'
+        save_filename = os.path.join(self._save_path, data_type + local_time + '.xls')
         if os.path.exists(save_filename):
             os.remove(save_filename)
 
@@ -1071,7 +1076,7 @@ class AutoZendeskDB(object):
         self._initial_comments_postgresql()
         self._build_comments_postgresql()
         self._build_topics_postgresql()
-        self._build_users_postgresql()
+#        self._build_users_postgresql()
         self._build_update_record()
 
         self.build_posts_excel_from_db()

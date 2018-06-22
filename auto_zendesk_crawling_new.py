@@ -32,7 +32,6 @@ Created on Thu Jan 18 14:06:16 2018
             01/2018 0.2-Beta: add database storage
             01/2018 0.1-Beta: build zendesk auto collect function
 """
-
 # core mods
 import codecs
 import os
@@ -40,14 +39,13 @@ import json
 import time
 import datetime
 import re
+import requests
 
 # 3rd party mods
-from selenium import webdriver
 import configure
 
-
 class AutoZendeskCrawling(object):
-    def __init__(self, username, passwd, chrome_driver_path):
+    def __init__(self, username, passwd):
         """
         Collect data(posts, comments, users, topics) from zendesk forum.
         :param username: username of Zendesk JetAdvantage Support forum
@@ -55,16 +53,15 @@ class AutoZendeskCrawling(object):
         :param chrome_driver_path: path of chromedriver.exe tool, normally put in the same path as chrome.exe
 
         """
+        self._token = "Bearer 10190a3ab2d7803e9f34f5b278d629eb97ab22cd2ab29366433dc9c56a4c1431"
+        self._header = {'Authorization' : self._token}
         self._username = username
         self._passwd = passwd
-        self._chrome_driver_path = chrome_driver_path
         self._save_path = configure.OUTPUT_PATH
 
         # total page of posts
         # set to 1 when initial and it will dynamically updated running post collection function
         self._total_page = 1
-        self._initial_page = r'https://developers.hp.com/user/login?destination=hp-zendesk-sso'
-        self._browser = None
         self._zendesk_main_page = r'https://jetadvantage.zendesk.com/hc/en-us'
 
         # this parameter determine how may days(latest days) of data to collect
@@ -145,86 +142,48 @@ class AutoZendeskCrawling(object):
         dd = dr.sub('', raw)
         return dd
 
-    def _login_zendesk(self):
-        """
-        open Zendesk and login.
-        :return: None
-        """
-        # Optional argument, if not specified will search path.
-        self._browser = webdriver.Chrome(self._chrome_driver_path)
-        self._browser.get(self._initial_page)
-
-        # login information
-        search_box = self._browser.find_element_by_name('name')
-        search_box.send_keys(self._username)
-        search_box.submit()
-
-        button = self._browser.find_element_by_class_name("vn-button vn-button--expanded social-button hp")
-        button.submit()
-
-        search_box = self._browser.find_element_by_name('pass')
-        search_box.send_keys(self._passwd)
-
-        self._browser.get(self._zendesk_main_page)
-        # set-up some seconds idle time to let the page fully loaded(because of the bad network in the office)
-        time.sleep(self._SLEEP_AFTER_LOG_IN)
-
-    def _logout_zendesk(self):
-        """
-        close and logout Zendesk.
-        :return: None
-        """
-        self._browser.quit()
-
-    def _collect_browser_page(self, js, file_name):
+    def _collect_data_from_api(self, url, file_name):
         """
         open a browser page and collect it.
         :param js: javascript command to open new browser page
         :param file_name: file name to save collected data
         :return: None
         """
-        self._browser.execute_script(js)
-        base_handler = self._browser.current_window_handle
-        all_handler = self._browser.window_handles
-        for handler in all_handler:
-            if handler != base_handler:
-                self._browser.switch_to.window(handler)
-                full_path = os.path.join(self._save_path, file_name)
-                try:
-                    if os.path.exists(full_path):
-                        os.remove(full_path)
-                    file_object = codecs.open(full_path, 'w', 'utf-8')
-                    raw_data = self._browser.page_source
+        full_path = os.path.join(self._save_path, file_name)
+        try:
+            if os.path.exists(full_path):
+                os.remove(full_path)
+            file_object = codecs.open(full_path, 'w', 'utf-8')
+            r = requests.get(url, headers=self._header)
+            raw_data = r.json()
 
-                    file_object.write(self._remove_html_tags(raw_data))
-                    file_object.close()
-                except IOError:
-                    print("ERROR: IO ERROR when save {0}".format(full_path))
-                    quit()
-                except OSError:
-                    print("ERROR: OS ERROR when save {0}".format(full_path))
-                    quit()
-                self._browser.close()
-        # switch handler
-        self._browser.switch_to.window(base_handler)
+            file_object.write(json.dumps(raw_data))
+            file_object.close()
+        except IOError:
+            print("ERROR: IO ERROR when save {0}".format(full_path))
+            quit()
+        except OSError:
+            print("ERROR: OS ERROR when save {0}".format(full_path))
+            quit()
+
 
     def _collect_posts(self):
         """
         collect json file(s) from Zendesk API.
         """
         # collect the first page to get total page count
-        js = 'window.open("https://jetadvantage.zendesk.com/api/v2/community/posts.json?page=1");'
+        url = 'https://jetadvantage.zendesk.com/api/v2/community/posts.json?page=1'
         file_name = 'post1.json'
-        self._collect_browser_page(js, file_name)
+        self._collect_data_from_api(url, file_name)
 
         # find total page count from the first page
         self._total_page = self._get_page_count()
         # collect the rest pages
         for page_cnt in range(2, self._total_page + 1):
-            js = 'window.open("https://jetadvantage.zendesk.com/api/v2/community/posts.json?page=' + str(
-                page_cnt) + '");'
+            url = 'https://jetadvantage.zendesk.com/api/v2/community/posts.json?page=' + str(
+                page_cnt)
             file_name = 'post' + str(page_cnt) + '.json'
-            self._collect_browser_page(js, file_name)
+            self._collect_data_from_api(url, file_name)
 
     def _collect_comments(self):
         """
@@ -238,9 +197,9 @@ class AutoZendeskCrawling(object):
         self._build_json_posts_file_list()
         self._parse_json_posts_file()
         for id0 in self._posts_id:
-            js = 'window.open("https://jetadvantage.zendesk.com/api/v2/community/posts/' + id0 + '/comments.json");'
+            url = 'https://jetadvantage.zendesk.com/api/v2/community/posts/' + id0 + '/comments.json'
             file_name = 'comments_' + id0 + '.json'
-            self._collect_browser_page(js, file_name)
+            self._collect_data_from_api(url, file_name)
 
     def _collect_users(self):
         """
@@ -251,10 +210,10 @@ class AutoZendeskCrawling(object):
         # print("Collecting Users...")
         # https://jetadvantage.zendesk.com/api/v2/search.json?page=1&query=created%3C2018-12-30
         for page_cnt in range(1, 3):
-            js = 'window.open("https://jetadvantage.zendesk.com/api/v2/search.json?page=' + str(page_cnt) + \
-                 '&query=created%3C2018-12-30");'
+            url = 'https://jetadvantage.zendesk.com/api/v2/search.json?page=' + str(page_cnt) + \
+                 '&query=created%3C2018-12-30'
             file_name = 'users_' + str(page_cnt) + '.json'
-            self._collect_browser_page(js, file_name)
+            self._collect_data_from_api(url, file_name)
 
     def _collect_topics(self):
         """
@@ -263,17 +222,12 @@ class AutoZendeskCrawling(object):
         """
         # print("Collecting Topics...")
         # https://jetadvantage.zendesk.com/api/v2/community/topics.json
-        js = 'window.open("https://jetadvantage.zendesk.com/api/v2/community/topics.json");'
+        url = 'https://jetadvantage.zendesk.com/api/v2/community/topics.json'
         file_name = 'topics.json'
-        self._collect_browser_page(js, file_name)
+        self._collect_data_from_api(url, file_name)
 
     def run_all(self):
-        self._login_zendesk()
-
         self._collect_posts()
         self._collect_comments()
         self._collect_users()
         self._collect_topics()
-
-        self._logout_zendesk()
-
