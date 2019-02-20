@@ -107,7 +107,8 @@ class AutoZendeskHelper(object):
         for r in os.listdir(self._save_path):
             if os.path.isfile(os.path.join(self._save_path, r)):
                 if re.match('^post.*.json', r) or re.match('^comment.*.json', r) or\
-                        re.match('^user.*.json', r) or re.match('^topic.*.json', r):
+                        re.match('^user.*.json', r) or re.match('^topic.*.json', r) or\
+                        re.match('^ticket.*.json',r):
                     os.remove(os.path.join(self._save_path, r))
 
     def move_json_from_shared_folder(self):
@@ -139,17 +140,25 @@ class AutoZendeskHelper(object):
         t = '_'.join((str(year), str(month), str(day)))
         post_name = ''.join(('posts_', t, '.xls'))
         com_name = ''.join(('comments_', t, '.xls'))
-        user_name = ''.join(('user_', t, '.xls'))
+        # user_name = ''.join(('user_', t, '.xls'))
+        ticket_name = ''.join(('tickets_', t, '.xls'))
+        tcomments_name = ''.join(('tickets_comments_', t, '.xls'))
 
         shutil.copyfile(os.path.join(self._save_path, post_name), des1 + post_name)
 
         shutil.copyfile(os.path.join(self._save_path, com_name), des1 + com_name)
 
-        shutil.copyfile(os.path.join(self._save_path, user_name), des1 + user_name)
+        # shutil.copyfile(os.path.join(self._save_path, user_name), des1 + user_name)
+
+        shutil.copyfile(os.path.join(self._save_path, ticket_name), des1 + ticket_name)
+
+        shutil.copyfile(os.path.join(self._save_path, tcomments_name), des1 + tcomments_name)
 
         os.remove(os.path.join(self._save_path, post_name))
         os.remove(os.path.join(self._save_path, com_name))
-        os.remove(os.path.join(self._save_path, user_name))
+        # os.remove(os.path.join(self._save_path, user_name))
+        os.remove(os.path.join(self._save_path, ticket_name))
+        os.remove(os.path.join(self._save_path, tcomments_name))
 
     def run_remove_json_files(self):
         self._remove_json_posts_files()

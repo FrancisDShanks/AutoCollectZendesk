@@ -45,24 +45,28 @@ import requests
 import configure
 
 class AutoZendeskCrawling(object):
-    def __init__(self, username, passwd):
+    def __init__(self, username='', passwd=''):
         """
         Collect data(posts, comments, users, topics) from zendesk forum.
         :param username: username of Zendesk JetAdvantage Support forum
-        :param passwd: password of Zendesk JetAdvantage Support forum
+        #:param passwd: password of Zendesk JetAdvantage Support forum
         :param chrome_driver_path: path of chromedriver.exe tool, normally put in the same path as chrome.exe
 
         """
         self._token = "Bearer 10190a3ab2d7803e9f34f5b278d629eb97ab22cd2ab29366433dc9c56a4c1431"
         self._header = {'Authorization' : self._token}
         self._username = username
-        self._passwd = passwd
+        #self._passwd = passwd
         self._save_path = configure.OUTPUT_PATH
 
         # total page of posts
         # set to 1 when initial and it will dynamically updated running post collection function
         self._total_page = 1
-        self._zendesk_main_page = r'https://jetadvantage.zendesk.com/hc/en-us'
+        self._zendesk_hc_entrance = r'https://jetadvantage.zendesk.com/hc/en-us'
+        self._zendesk_api_entrance = r'https://jetadvantage.zendesk.com/api/v2/'
+
+        # total page of tickets
+        self._total_ticket = 1
 
         # this parameter determine how may days(latest days) of data to collect
         self._LATEST_DAYS_DATA_TO_COLLECT = 5
@@ -73,6 +77,9 @@ class AutoZendeskCrawling(object):
 
         self._posts_id = []
         self._json_posts_filename_list = []
+
+        self._tickets_id = []
+        self._json_tickets_filename_list = []
 
     def _get_page_count(self):
         """
@@ -131,6 +138,46 @@ class AutoZendeskCrawling(object):
                 if re.match('^post.*.json', file):
                     self._json_posts_filename_list.append(os.path.join(self._save_path, file))
 
+    def _parse_json_tickets_file(self):
+        """
+        parse tickets json files, load tickets's comments records for comments collection function.
+        only load ticket(s) witch is updated in self._LATEST_DAYS_DATA_TO_COLLECT days.
+        :return: None
+        """
+        for file in self._json_tickets_filename_list:
+            try:
+                with open(file, 'r', encoding='utf8') as f:
+                    data = json.load(f)
+                    tickets = data['tickets']
+                    for ticket in tickets:
+                        update_str = ticket['updated_at']
+                        update_time = datetime.datetime.strptime(update_str, "%Y-%m-%dT%H:%M:%SZ")
+
+                        c_time = datetime.datetime.now()
+                        days = (c_time - update_time).days
+
+                        # only collects those posts' comments which has been updated in n days
+                        if days < self._LATEST_DAYS_DATA_TO_COLLECT:
+                            # print(post['id'], update_time)
+                            # print(days)
+                            self._tickets_id.append(str(ticket['id']))
+            except IOError:
+                print("ERROR: IO ERROR when load {0}".format(file))
+                quit()
+            except json.JSONDecodeError:
+                print("ERROR: Json file {0} decode error!".format(file))
+                quit()
+
+    def _build_json_tickets_file_list(self):
+        """
+        build tickets json file list.
+        :return: None
+        """
+        for root, dirs, files in os.walk(self._save_path):
+            for file in files:
+                if re.match('^ticket[0-9]*.json', file):
+                    self._json_tickets_filename_list.append(os.path.join(self._save_path, file))
+
     @staticmethod
     def _remove_html_tags(raw):
         """
@@ -169,7 +216,7 @@ class AutoZendeskCrawling(object):
 
     def _collect_posts(self):
         """
-        collect json file(s) from Zendesk API.
+        collect posts json file(s) from Zendesk API.
         """
         # collect the first page to get total page count
         url = 'https://jetadvantage.zendesk.com/api/v2/community/posts.json?page=1'
@@ -201,19 +248,69 @@ class AutoZendeskCrawling(object):
             file_name = 'comments_' + id0 + '.json'
             self._collect_data_from_api(url, file_name)
 
+    def _collect_tickets(self):
+        """
+        collect posts json file(s) from Zendesk API.
+        :return:
+        """
+        page_cnt = 1
+        next_page_url = 'https://jetadvantage.zendesk.com/api/v2/tickets.json?page=' + str(
+            page_cnt)
+
+        while next_page_url is not None:
+            file_name = 'ticket' + str(page_cnt) + '.json'
+            self._collect_data_from_api(next_page_url, file_name)
+            try:
+                with open(os.path.join(self._save_path, file_name), 'r', encoding='utf8') as f:
+                    data = json.load(f)
+                    next_page_url = data['next_page']
+            except IOError:
+                print("ERROR: IO ERROR when load {0}".format(file_name))
+                quit()
+            except json.JSONDecodeError:
+                print("ERROR: Json file {0} decode error!".format(file_name))
+                quit()
+            page_cnt += 1
+
+    def _collect_ticket_comments(self):
+        """
+        collect ticket comments.
+        Only collect comments belong to post updated/created in recent particular days.
+        :return: None
+        """
+        # TODO : now I consider all comments only have one page, should detect page count
+        # comments query format
+        # https://jetadvantage.zendesk.com/api/v2/community/posts/220794928/comments.json
+        self._build_json_tickets_file_list()
+        self._parse_json_tickets_file()
+        for id0 in self._tickets_id:
+            url = 'https://jetadvantage.zendesk.com/api/v2/tickets/' + id0 + '/comments.json'
+            file_name = 'ticket_comm_' + id0 + '.json'
+            self._collect_data_from_api(url, file_name)
+
     def _collect_users(self):
         """
         collect zendesk forum user info.
         :return: None
         """
-        # TODO: 1.auto detect page count. 2.auto build query http address.
         # print("Collecting Users...")
-        # https://jetadvantage.zendesk.com/api/v2/search.json?page=1&query=created%3C2018-12-30
-        for page_cnt in range(1, 3):
-            url = 'https://jetadvantage.zendesk.com/api/v2/search.json?page=' + str(page_cnt) + \
-                 '&query=created%3C2018-12-30'
+        # https://jetadvantage.zendesk.com/api/v2/users.json
+        page_cnt = 1
+        next_page_url = 'https://jetadvantage.zendesk.com/api/v2/users.json'
+        while next_page_url is not None:
             file_name = 'users_' + str(page_cnt) + '.json'
-            self._collect_data_from_api(url, file_name)
+            self._collect_data_from_api(next_page_url, file_name)
+            try:
+                with open(os.path.join(self._save_path, file_name), 'r', encoding='utf8') as f:
+                    data = json.load(f)
+                    next_page_url = data['next_page']
+            except IOError:
+                print("ERROR: IO ERROR when load {0}".format(file_name))
+                quit()
+            except json.JSONDecodeError:
+                print("ERROR: Json file {0} decode error!".format(file_name))
+                quit()
+            page_cnt += 1
 
     def _collect_topics(self):
         """
@@ -226,8 +323,22 @@ class AutoZendeskCrawling(object):
         file_name = 'topics.json'
         self._collect_data_from_api(url, file_name)
 
+    def collect_users(self):
+        self._collect_users()
+
+
     def run_all(self):
         self._collect_posts()
         self._collect_comments()
-        self._collect_users()
+        # self._collect_users()
         self._collect_topics()
+        self._collect_tickets()
+        self._collect_ticket_comments()
+
+    def test(self):
+        # self._collect_posts()
+        # self._collect_comments()
+        # self._collect_users()
+        # self._collect_topics()
+        self._collect_tickets()
+        self._collect_ticket_comments()

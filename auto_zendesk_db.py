@@ -62,6 +62,7 @@ class AutoZendeskDB(object):
         # length limit of a excel cell
         self._EXCEL_MAXIMUM_CELL = 32767
         self._posts_id = []
+        self._tickets_id = []
 
         self._postgresql_dbname = postgresql_dbname
         self._postgresql_user = postgresql_user
@@ -73,6 +74,8 @@ class AutoZendeskDB(object):
         self._json_posts_filename_list = []
         self._json_comments_filename_list = []
         self._json_users_filename_list = []
+        self._json_tickets_filename_list = []
+        self._json_tickets_comments_filename_list = []
 
         self._connect_postgresql()
 
@@ -166,7 +169,7 @@ class AutoZendeskDB(object):
     def _build_json_users_file_list(self):
         for root, dirs, files in os.walk(self._save_path):
             for file in files:
-                if re.match('^user.*.json', file):
+                if re.match('^users.*.json', file):
                     self._json_users_filename_list.append(os.path.join(self._save_path, file))
 
     def _build_json_comments_file_list(self):
@@ -174,12 +177,6 @@ class AutoZendeskDB(object):
             for file in files:
                 if re.match('^comment.*.json', file):
                     self._json_comments_filename_list.append(os.path.join(self._save_path, file))
-
-        # for j in self._json_comments_filename_list:
-            # print(j)
-            # with open(j, 'r', encoding='utf8') as f:
-            #     data = f.read()
-            #     print(data)
 
     def _initial_comments_postgresql(self):
         """
@@ -326,24 +323,7 @@ class AutoZendeskDB(object):
         """
         self._build_json_users_file_list()
         cur = self._postgresql_conn.cursor()
-        """
-        "id": varchar
-        "url": varchar
-        "name": varchar
-        "email": varchar
-        "created_at": varchar
-        "updated_at": varchar
-        "time_zone": varchar
-        "phone": varchar
-        "shared_phone_number": varchar
-        "photo": text
-        "locale_id": varchar
-        "locale": varchar
-        "organization_id": varchar
-        "role": varchar
-        "verified": bool
-        "result_type": varchar
-        """
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS isv_users (
         id varchar PRIMARY KEY,
@@ -361,7 +341,8 @@ class AutoZendeskDB(object):
         organization_id varchar,
         role varchar,
         verified bool,
-        result_type varchar       
+        last_login_at VARCHAR,
+        restricted_agent bool
         );
         """
                     )
@@ -376,7 +357,7 @@ class AutoZendeskDB(object):
                 print("ERROR: Json file {0} decode error!".format(filename))
                 quit()
 
-            users = data['results']
+            users = data['users']
             for user in users:
                 # TODO: why 3 tickets here?
                 if 'body' in user.keys():
@@ -404,15 +385,14 @@ class AutoZendeskDB(object):
                                 created_at = %s,
                                 updated_at = %s,
                                 time_zone = %s,
-                                phone = %s,
                                 shared_phone_number = %s,
-                                photo = %s,
                                 locale_id = %s,
                                 locale = %s,
                                 organization_id = %s,
                                 role = %s,
                                 verified = %s,
-                                result_type = %s WHERE id = %s   
+                                last_login_at = %s,
+                                restricted_agent = %s,  
                                 """
                     cur.execute(command, (
                         user['url'],
@@ -421,37 +401,38 @@ class AutoZendeskDB(object):
                         created_at,
                         updated_at,
                         user['time_zone'],
-                        str(user['phone']),
                         str(user['shared_phone_number']),
-                        str(user['photo']),
                         str(user['locale_id']),
                         user['locale'],
                         str(user['organization_id']),
                         user['role'],
                         user['verified'],
-                        user['result_type'],
+                        str(user['last_login_at']),
+                        user['restricted_agent'],
                         str(user['id'])
                     ))
                 else:
-                    command = "INSERT INTO isv_users VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);"
-
-                    cur.execute(command, (str(user['id']),
+                    command = "INSERT INTO isv_users VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);"
+                    a = (str(user['id']),
                                           user['url'],
                                           user['name'],
                                           user['email'],
                                           created_at,
                                           updated_at,
                                           user['time_zone'],
-                                          str(user['phone']),
                                           str(user['shared_phone_number']),
-                                          str(user['photo']),
                                           str(user['locale_id']),
                                           user['locale'],
                                           str(user['organization_id']),
                                           user['role'],
                                           user['verified'],
-                                          user['result_type']
-                                          ))
+                                          str(user['last_login_at']),
+                                          user['restricted_agent']
+                                          )
+                    print(type(a))
+                    print(len(a))
+                    print('A:', a)
+                    cur.execute(command, a)
 
         self._postgresql_conn.commit()
         cur.close()
@@ -762,7 +743,7 @@ class AutoZendeskDB(object):
     def _build_excel_filename(self, data_type):
         """
         Build excel file name, and remove excel if already exists
-        :param data_type: 'posts' or 'comments'
+        :param data_type: 'posts' or 'comments' or 'tickets' or 'ticket_comments'
         :return: excel filename
         """
         local_time = time.strftime("_%Y_%m_%d", time.localtime(time.time()))
@@ -1069,19 +1050,7 @@ class AutoZendeskDB(object):
             quit()
         return data
 
-    def run_all(self):
 
-        self._initial_posts_postgresql()
-        self._build_posts_postgresql()
-        self._initial_comments_postgresql()
-        self._build_comments_postgresql()
-        self._build_topics_postgresql()
-#        self._build_users_postgresql()
-        self._build_update_record()
-
-        self.build_posts_excel_from_db()
-        self.build_comments_excel_from_db()
-        self.build_users_excel_from_db()
 
     def report_data(self):
         cur = self._postgresql_conn.cursor()
@@ -1157,6 +1126,415 @@ class AutoZendeskDB(object):
         print(res)
         return res
 
+    def _build_json_tickets_file_list(self):
+        for root, dirs, files in os.walk(self._save_path):
+            for file in files:
+                if re.match('^ticket[0-9]+.json', file):
+                    self._json_tickets_filename_list.append(os.path.join(self._save_path, file))
+
+        # for j in self._json_comments_filename_list:
+            # print(j)
+            # with open(j, 'r', encoding='utf8') as f:
+            #     data = f.read()
+            #     print(data)
+
+    def _parse_json_tickets_file(self):
+        for file in self._json_tickets_filename_list:
+            try:
+                with open(file, 'r', encoding='utf8') as f:
+                    data = json.load(f)
+                    tickets = data['tickets']
+                    for ticket in tickets:
+                        self._tickets_id.append(str(ticket['id']))
+
+            except json.JSONDecodeError:
+                print("ERROR: Json file {0} decode error!".format(file))
+                quit()
+
+    def _initial_tickets_postgresql(self):
+        """
+        build ticket json table
+        :return: None
+        """
+        self._build_json_tickets_file_list()
+        # print('Tickets Json file names', self._json_tickets_filename_list)
+        self._parse_json_tickets_file()
+        #print('Tickets IDs', self._tickets_id)
+        #print('Number of tickets', len(self._tickets_id))
+
+        cur = self._postgresql_conn.cursor()
+        cur.execute("CREATE TABLE IF NOT EXISTS isv_tickets_json (id VARCHAR PRIMARY KEY, jdoc jsonb);")
+
+        for filename in self._json_tickets_filename_list:
+            data = self._load_json(filename)
+            tickets = data['tickets']
+            for ticket in tickets:
+                cur.execute("SELECT * FROM isv_tickets_json WHERE id = %s;", (str(ticket['id']),))
+                result = cur.fetchall()
+                if result:
+                    command = "UPDATE isv_tickets_json SET jdoc = %s WHERE id = %s;"
+                    cur.execute(command, [psycopg2.extras.Json(ticket), str(ticket['id'])])
+                else:
+                    cur.execute("INSERT INTO isv_tickets_json (id, jdoc) VALUES(%s, %s);",
+                                [str(ticket['id']), psycopg2.extras.Json(ticket)])
+
+        self._postgresql_conn.commit()
+        cur.close()
+        print("table isv_tickets_json updated")
+
+    def _build_tickets_postgresql(self):
+        """
+        build tickets table
+        :return: None
+        """
+
+        cur = self._postgresql_conn.cursor()
+        try:
+            cur.execute("select jdoc from isv_tickets_json")
+        except Exception:
+            print("Error, check if table isv_tickets_json exists")
+
+        tickets = cur.fetchall()
+        # tickets = [({})]
+        # ticket are stored in dict, than encapsuled by fetchall() function, and put all ticket in a list
+        cur.execute(
+            """
+        CREATE TABLE IF NOT EXISTS isv_tickets (
+        id varchar PRIMARY KEY, 
+        url varchar, 
+        subject text, 
+        status varchar, 
+        created_at_timestamp real,
+        created_at varchar, 
+        updated_at_timestamp real,
+        updated_at varchar,         
+        submitter_id varchar,
+        assignee_id varchar,
+        problem_id varchar, 
+        post_id varchar,
+        classification varchar,
+        sdk_type varchar
+        );
+        """
+                    )
+
+        for ticket in tickets:
+            ticket = ticket[0]
+            created_at = ticket['created_at']
+            created_at_date = created_at[:10]
+            created_at_time = created_at[11:-1]
+            created_at = created_at_date + ' ' + created_at_time
+            t = time.strptime(created_at, '%Y-%m-%d %H:%M:%S')
+            created_at_timestamp = time.mktime(t)
+
+            updated_at = ticket['updated_at']
+            updated_at_date = updated_at[:10]
+            updated_at_time = updated_at[11:-1]
+            updated_at = updated_at_date + ' ' + updated_at_time
+            t = time.strptime(updated_at, '%Y-%m-%d %H:%M:%S')
+            updated_at_timestamp = time.mktime(t)
+
+            custom_fields = ticket['custom_fields']
+            sdk_type = custom_fields[6]['value']
+            post_id = custom_fields[11]['value']
+            problem_id = custom_fields[20]['value']
+            classification = custom_fields[22]['value']
+
+            cur.execute("SELECT * FROM isv_tickets WHERE id = %s;", (str(ticket['id']),))
+            result = cur.fetchall()
+            if result:
+                command = """UPDATE isv_tickets SET url = %s,
+                                        subject = %s, 
+                                        status = %s, 
+                                        submitter_id = %s, 
+                                        assignee_id = %s,
+                                        problem_id = %s,
+                                        created_at_timestamp = %s,
+                                        created_at = %s, 
+                                        updated_at_timestamp = %s,
+                                        updated_at = %s, 
+                                        post_id = %s,
+                                        classification = %s,
+                                        sdk_type = %s
+                                        WHERE id = %s;
+                                        """
+                cur.execute(command, (
+                    ticket['url'],
+                    ticket['subject'],
+                    ticket['status'],
+                    str(ticket['submitter_id']),
+                    str(ticket['assignee_id']),
+                    problem_id,
+                    created_at_timestamp,
+                    ticket['created_at'],
+                    updated_at_timestamp,
+                    ticket['updated_at'],
+                    str(post_id),
+                    classification,
+                    str(ticket['id']),
+                    str(sdk_type)
+                ))
+            else:
+                command = """
+                                          INSERT INTO isv_tickets(
+                                                    id, 
+                                                    url, 
+                                                    subject, 
+                                                    status, 
+                                                    submitter_id, 
+                                                    assignee_id, 
+                                                    problem_id, 
+                                                    created_at_timestamp,
+                                                    created_at, 
+                                                    updated_at_timestamp,
+                                                    updated_at,
+                                                    post_id,
+                                                    classification,
+                                                    sdk_type
+                                          )                           
+                                          VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);
+                                          """
+                cur.execute(command, (str(ticket['id']),
+                                      ticket['url'],
+                                      ticket['subject'],
+                                      ticket['status'],
+                                      str(ticket['submitter_id']),
+                                      str(ticket['assignee_id']),
+                                      problem_id,
+                                      created_at_timestamp,
+                                      ticket['created_at'],
+                                      updated_at_timestamp,
+                                      ticket['updated_at'],
+                                      str(post_id),
+                                      classification,
+                                      str(sdk_type)
+                                      ))
+        self._postgresql_conn.commit()
+        cur.close()
+        print("table isv_tickets updated")
+
+    def build_tickets_excel_from_db(self):
+        """
+        build Excel report file from tickets data
+        """
+        row_cnt = 0
+        workbook = xlwt.Workbook()
+        ws = workbook.add_sheet("Tickets")
+        cur = self._postgresql_conn.cursor()
+        try:
+            cur.execute("select id,url,subject,status,created_at,updated_at,submitter_id,assignee_id,"
+                        "problem_id,post_id,classification,sdk_type from isv_tickets")
+        except Exception:
+            print("Error, check if table isv_posts_json exists")
+
+        tickets = cur.fetchall()
+        keys = ['id', 'url', 'subject', 'status', 'created_at', 'updated_at',
+                'submitter_id', 'assignee_id', 'problem_id', 'post_id', 'classification', 'sdk_type']
+        for ticket in tickets:
+            if not row_cnt:
+                count = 0
+                for key in keys:
+                    ws.write(0, count, key)
+                    count += 1
+
+            row_cnt += 1
+            count = 0
+            for cnt in range(len(ticket)):
+                data = ticket[cnt]
+                # ticket[2] is subject, prevent longer than maximum
+                if cnt == 2:
+                    data = data[:self._EXCEL_MAXIMUM_CELL]
+
+                #if cnt in [6, 7, 8, 9, 11] and ticket[cnt] is not None:
+                #    data = str(data)
+
+                ws.write(row_cnt, count, str(data))
+                count += 1
+        cur.close()
+        workbook.save(self._build_excel_filename('tickets'))
+        print("build ticket excel")
+
+    def _build_json_tickets_comments_file_list(self):
+        for root, dirs, files in os.walk(self._save_path):
+            for file in files:
+                if re.match('^ticket_comm_.*.json', file):
+                    self._json_tickets_comments_filename_list.append(os.path.join(self._save_path, file))
+
+    def _initial_tickets_comments_postgresql(self):
+        """
+        build comment json table
+        :return: None
+        """
+        self._build_json_tickets_comments_file_list()
+
+        cur = self._postgresql_conn.cursor()
+        cur.execute("""
+                     CREATE TABLE IF NOT EXISTS isv_tcomments_json (
+                     id VARCHAR PRIMARY KEY,
+                     ticket_id VARCHAR,
+                     jdoc jsonb);
+                     """)
+
+        for filename in self._json_tickets_comments_filename_list:
+            data = self._load_json(filename)
+            # find the ticket id from the filename
+            # the filename is save_path + ticket_comments_ticketid.json
+            save_path_length = len(self._save_path)
+            ticket_id = filename[save_path_length+13:-5]
+
+            comments = data['comments']
+            for comment in comments:
+
+                cur.execute("SELECT * FROM isv_tcomments_json WHERE id=%s;", (str(comment['id']),))
+                result = cur.fetchall()
+
+                if result:
+                    command = "UPDATE isv_tcomments_json SET jdoc = %s WHERE id = %s;"
+                    cur.execute(command, [psycopg2.extras.Json(comment), str(comment['id'])])
+                else:
+                    command = "INSERT INTO isv_tcomments_json (id, ticket_id, jdoc) VALUES(%s, %s, %s);"
+                    cur.execute(command, [str(comment['id']), str(ticket_id), psycopg2.extras.Json(comment)])
+
+        self._postgresql_conn.commit()
+        cur.close()
+
+        print("table isv_tickets_comments_json updated")
+
+    def _build_tickets_comments_postgresql(self):
+        """
+        build tickets comments table
+        :return: None
+        """
+        cur = self._postgresql_conn.cursor()
+        try:
+            cur.execute("select ticket_id,jdoc from isv_tcomments_json")
+        except Exception:
+            print("Error, check if table isv_comments_json exists")
+        comments = cur.fetchall()
+        # comments = [(ticket_id, {comment})]
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS isv_tcomments (
+        id varchar PRIMARY KEY, 
+        tickets_id varchar, 
+        author_id varchar, 
+        created_at_timestamp real,
+        created_at varchar, 
+        is_public bool
+        );
+        """)
 
 
+        for comment in comments:
+            ticket_id = comment[0]
+            comment = comment[1]
 
+            created_at = comment['created_at']
+            created_at_date = created_at[:10]
+            created_at_time = created_at[11:-1]
+            created_at = created_at_date + ' ' + created_at_time
+            t = time.strptime(created_at, '%Y-%m-%d %H:%M:%S')
+            created_at_timestamp = time.mktime(t)
+
+            cur.execute("SELECT * FROM isv_tcomments WHERE id=%s;", (str(comment['id']),))
+            result = cur.fetchall()
+            if result:
+                command = """UPDATE isv_tcomments SET 
+                                tickets_id = %s, 
+                                author_id = %s, 
+                                created_at_timestamp = %s,
+                                created_at = %s, 
+                                is_public = %s 
+                                WHERE id = %s;
+                            """
+                cur.execute(command, (
+                                      ticket_id,
+                                      str(comment['author_id']),
+                                      created_at_timestamp,
+                                      comment['created_at'],
+                                      comment['public'],
+                                      str(comment['id']),
+                ))
+            else:
+                command = "INSERT INTO isv_tcomments VALUES(%s,%s,%s,%s,%s,%s);"
+                cur.execute(command, (str(comment['id']),
+                                      ticket_id,
+                                      str(comment['author_id']),
+                                      created_at_timestamp,
+                                      comment['created_at'],
+                                      comment['public'],))
+
+        self._postgresql_conn.commit()
+        cur.close()
+        print("table isv_tickets_comments updated")
+
+    def build_tickets_comments_excel_from_db(self):
+        """
+        build Excel report file from tickets comments data
+        """
+        row_cnt = 0
+        workbook = xlwt.Workbook()
+        ws = workbook.add_sheet("Tickets Comments")
+        cur = self._postgresql_conn.cursor()
+        try:
+            cur.execute("select id,tickets_id,author_id,created_at,is_public from isv_tcomments")
+        except Exception:
+            print("Error, check if table isv_tcomments_json exists")
+
+        comments = cur.fetchall()
+        keys = ['id', 'tickets_id', 'author_id', 'created_at', 'is_public']
+        for comment in comments:
+            if not row_cnt:
+                count = 0
+                for key in keys:
+                    ws.write(0, count, key)
+                    count += 1
+
+            row_cnt += 1
+            count = 0
+            for cnt in range(len(comment)):
+                data = comment[cnt]
+                #if cnt in [6, 7, 8, 9, 11] and ticket[cnt] is not None:
+                #    data = str(data)
+
+                ws.write(row_cnt, count, str(data))
+                count += 1
+        cur.close()
+        workbook.save(self._build_excel_filename('tickets_comments'))
+        print("build ticket comments excel")
+
+    def run_all(self):
+
+        self._initial_posts_postgresql()
+        self._build_posts_postgresql()
+        self._initial_comments_postgresql()
+        self._build_comments_postgresql()
+        self._build_topics_postgresql()
+        # self._build_users_postgresql()
+        self._build_update_record()
+
+        self.build_posts_excel_from_db()
+        self.build_comments_excel_from_db()
+        # self.build_users_excel_from_db()
+
+        self._initial_tickets_postgresql()
+        self._build_tickets_postgresql()
+        self.build_tickets_excel_from_db()
+
+        self._initial_tickets_comments_postgresql()
+        self._build_tickets_comments_postgresql()
+        self.build_tickets_comments_excel_from_db()
+
+    def run_users(self):
+        self._initial_posts_postgresql()
+        self._build_users_postgresql()
+        self.build_users_excel_from_db()
+
+    def test(self):
+        self._initial_tickets_postgresql()
+        self._build_tickets_postgresql()
+        self.build_tickets_excel_from_db()
+
+        self._initial_tickets_comments_postgresql()
+        self._build_tickets_comments_postgresql()
+        self.build_tickets_comments_excel_from_db()
