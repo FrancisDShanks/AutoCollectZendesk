@@ -19,7 +19,8 @@ Created on Thu Jan 18 14:06:16 2018
 
 @author: Francis Xufan Du - BEYONDSOFT INC.
 @email: duxufan@beyondsoft.com xufan.du@gmail.com
-@Version: 	06/2018 0.8-Beta    add new auto crawler to use zendesk api instead of using browser(need zendesk agent)
+@Version: 	02/2019 1.0         add new crawler for zendesk tickets and tickets comments(need proper agent account)
+            06/2018 0.8-Beta    add new auto crawler to use zendesk api instead of using browser(need zendesk agent)
             03/2018 0.7-Beta    add auto_zendesk_report.py module to generate reports based on MarkDown
             03/2018 0.6.5-Beta add isv_status in database table isv_posts, to record post status marked by isv team
             03/2018 0.6-Beta:   1. update the tool to only collect the necessary data
@@ -45,7 +46,7 @@ import requests
 import configure
 
 class AutoZendeskCrawling(object):
-    def __init__(self, username='', passwd=''):
+    def __init__(self, username='', passwd='', token=""):
         """
         Collect data(posts, comments, users, topics) from zendesk forum.
         :param username: username of Zendesk JetAdvantage Support forum
@@ -53,10 +54,10 @@ class AutoZendeskCrawling(object):
         :param chrome_driver_path: path of chromedriver.exe tool, normally put in the same path as chrome.exe
 
         """
-        self._token = "Bearer 10190a3ab2d7803e9f34f5b278d629eb97ab22cd2ab29366433dc9c56a4c1431"
-        self._header = {'Authorization' : self._token}
+        self._token = token
+        self._header = {'Authorization': self._token}
         self._username = username
-        #self._passwd = passwd
+        self._passwd = passwd
         self._save_path = configure.OUTPUT_PATH
 
         # total page of posts
